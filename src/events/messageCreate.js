@@ -1,7 +1,4 @@
-
-
-
-
+console.log("MESSAGE EVENT WORKING");
 
 export default {
   name: Events.MessageCreate,
