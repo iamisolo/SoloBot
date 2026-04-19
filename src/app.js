@@ -13,6 +13,12 @@ import { checkBirthdays } from './services/birthdayService.js';
 import { checkGiveaways } from './services/giveawayService.js';
 import { loadCommands, registerCommands as registerSlashCommands } from './handlers/commandLoader.js';
 
+console.log("DEBUG CONFIG:", {
+  token: !!process.env.TOKEN || !!process.env.DISCORD_TOKEN,
+  clientId: !!process.env.CLIENT_ID,
+  guildId: !!process.env.GUILD_ID
+});
+
 class TitanBot extends Client {
   constructor() {
     super({
