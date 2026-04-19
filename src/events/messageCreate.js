@@ -1,39 +1,29 @@
-import { logger } from '../utils/logger.js';
-
 export default {
   name: 'messageCreate',
 
   async execute(message, client) {
-    try {
-      if (message.author.bot || !message.guild) return;
+    console.log("MESSAGE EVENT TRIGGERED:", message.content);
 
-      // =========================
-      // PREFIX SYSTEM
-      // =========================
-      const prefix = 's!';
+    if (message.author.bot || !message.guild) return;
 
-      if (message.content.startsWith(prefix)) {
-        const args = message.content.slice(prefix.length).trim().split(/ +/);
-        const commandName = args.shift().toLowerCase();
+    const prefix = 's!';
 
-        const command = client.commands.get(commandName);
+    if (!message.content.startsWith(prefix)) return;
 
-        if (command && command.executePrefix) {
-          await command.executePrefix(message, args, client);
-          return;
-        }
-      }
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const commandName = args.shift().toLowerCase();
 
-      // =========================
-      // LEVELING SYSTEM
-      // =========================
-      // (only if your function exists)
-      if (typeof handleLeveling === 'function') {
-        await handleLeveling(message, client);
-      }
+    console.log("COMMAND:", commandName);
 
-    } catch (error) {
-      logger.error('messageCreate error:', error);
+    const command = client.commands.get(commandName);
+
+    if (!command) {
+      console.log("Command not found");
+      return;
+    }
+
+    if (command.executePrefix) {
+      command.executePrefix(message, args, client);
     }
   }
 };
