@@ -41,7 +41,7 @@ class TitanBot extends Client {
     this.modals = new Collection();
     this.cooldowns = new Collection();
     this.db = null;
-    this.rest = new REST({ version: '10' }).setToken(config.bot.token);
+    this.rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
   }
 
   async start() {
@@ -81,7 +81,7 @@ class TitanBot extends Client {
       startupLog('Handlers loaded');
       
       startupLog('Logging into Discord...');
-      await this.login(this.config.bot.token);
+      await this.login(process.env.TOKEN);
       startupLog('Discord login successful');
       
       startupLog('Registering slash commands...');
