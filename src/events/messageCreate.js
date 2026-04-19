@@ -1,12 +1,15 @@
-console.log("MESSAGE EVENT WORKING");
+import { logger } from '../utils/logger.js';
 
 export default {
-  name: Events.MessageCreate,
+  name: 'messageCreate',
+
   async execute(message, client) {
     try {
       if (message.author.bot || !message.guild) return;
 
-      // PREFIX COMMAND SYSTEM
+      // =========================
+      // PREFIX SYSTEM
+      // =========================
       const prefix = 's!';
 
       if (message.content.startsWith(prefix)) {
@@ -15,19 +18,22 @@ export default {
 
         const command = client.commands.get(commandName);
 
-        if (command?.executePrefix) {
+        if (command && command.executePrefix) {
           await command.executePrefix(message, args, client);
           return;
         }
       }
 
+      // =========================
       // LEVELING SYSTEM
+      // =========================
+      // (only if your function exists)
       if (typeof handleLeveling === 'function') {
         await handleLeveling(message, client);
       }
 
     } catch (error) {
-      console.error('Error in messageCreate event:', error);
+      logger.error('messageCreate error:', error);
     }
   }
 };
