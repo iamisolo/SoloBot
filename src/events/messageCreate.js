@@ -1,29 +1,30 @@
+import { Events } from 'discord.js';
+import { logger } from '../utils/logger.js';
+
 export default {
-  name: 'messageCreate',
+  name: Events.MessageCreate,
 
   async execute(message, client) {
-    console.log("MESSAGE EVENT TRIGGERED:", message.content);
+    try {
+      if (message.author.bot || !message.guild) return;
 
-    if (message.author.bot || !message.guild) return;
+      const prefix = 's!';
 
-    const prefix = 's!';
+      if (!message.content.startsWith(prefix)) return;
 
-    if (!message.content.startsWith(prefix)) return;
+      const args = message.content.slice(prefix.length).trim().split(/ +/);
+      const commandName = args.shift().toLowerCase();
 
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
+      const command = client.commands.get(commandName);
 
-    console.log("COMMAND:", commandName);
+      if (!command) return;
 
-    const command = client.commands.get(commandName);
+      if (command.executePrefix) {
+        await command.executePrefix(message, args, client);
+      }
 
-    if (!command) {
-      console.log("Command not found");
-      return;
-    }
-
-    if (command.executePrefix) {
-      command.executePrefix(message, args, client);
+    } catch (error) {
+      logger.error('Error in messageCreate:', error);
     }
   }
 };
