@@ -328,171 +328,201 @@ if (interaction.customId === "ticket_select") {
 
   const channel = await guild.channels.create({
     name: `${choice}-${user.username}`,
-    type: ChannelType.GuildText,
-    parent: category.id,
-    permissionOverwrites: [
-      {
-        id: guild.id,
-        deny: ["ViewChannel"]
-      },
-      {
-        id: user.id,
-        allow: ["ViewChannel", "SendMessages"]
-      },
-      ...STAFF_ROLE_IDS.map(id => ({
-        id,
-        allow: ["ViewChannel", "SendMessages"]
-      }))
-    ]
-  });
+import { 
+  Events, 
+  ChannelType, 
+  MessageFlags,
+  ActionRowBuilder, 
+  ButtonBuilder, 
+  ButtonStyle 
+} from 'discord.js';
 
-  const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import("discord.js");
+export default {
+  name: Events.InteractionCreate,
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("close_ticket")
-      .setLabel("Close Ticket")
-      .setStyle(ButtonStyle.Danger)
-  );
+  async execute(interaction, client) {
+    try {
 
-  await channel.send({
-    content: `Welcome ${user}`,
-    components: [row]
-  });
+      // ===============================
+      // ✅ SLASH COMMANDS
+      // ===============================
+      if (interaction.isChatInputCommand()) {
 
-  await interaction.reply({
-    content: `Ticket created: ${channel}`,
-    flags: MessageFlags.Ephemeral
-  });
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
 
-  return;
-}
-          const [customId, ...args] = interaction.customId.split(':');
-          const selectMenu = client.selectMenus.get(customId);
+        await command.execute(interaction, client);
+      }
 
-          if (!selectMenu) {
-            if (!interaction.customId.includes(':')) {
-              // No registered handler and no ':' delimiter — this is an inline-collected
-              // select menu (e.g. ticket_config_<guildId>, jointocreate_config_<id>).
-              // Return silently so the existing MessageComponentCollector handles it.
-              return;
-            }
+      // ===============================
+      // ✅ BUTTONS
+      // ===============================
+      else if (interaction.isButton()) {
 
-            throw createError(
-              `No select menu handler found for ${customId}`,
-              ErrorTypes.CONFIGURATION,
-              'This select menu is not available.',
-              withTraceContext({ customId }, interactionTraceContext)
-            );
-          }
+        const { guild, user } = interaction;
 
-          try {
-            await selectMenu.execute(interaction, client, args);
-          } catch (error) {
-            await handleInteractionError(interaction, error, withTraceContext({
-              type: 'select_menu',
-              customId: interaction.customId
-            }, interactionTraceContext));
-          }
-        } else if (interaction.isModalSubmit()) {
-          if (interaction.customId.startsWith('app_modal_')) {
-            try {
-              await handleApplicationModal(interaction);
-            } catch (error) {
-              await handleInteractionError(interaction, error, withTraceContext({
-                type: 'modal',
-                customId: interaction.customId,
-                handler: 'application'
-              }, interactionTraceContext));
-            }
-            return;
-          }
+        // 🎟️ CREATE TICKET BUTTON
+        if (interaction.customId === "ticket_create") {
 
-          if (interaction.customId.startsWith('app_review_')) {
-            try {
-              await handleApplicationReviewModal(interaction);
-            } catch (error) {
-              await handleInteractionError(interaction, error, withTraceContext({
-                type: 'modal',
-                customId: interaction.customId,
-                handler: 'application_review'
-              }, interactionTraceContext));
-            }
-            return;
-          }
+          const existing = guild.channels.cache.find(
+            c => c.name === `ticket-${user.username}`
+          );
 
-          if (interaction.customId.startsWith('jtc_')) {
-            logger.debug(`Skipping modal handler lookup for inline-awaited modal: ${interaction.customId}`, {
-              event: 'interaction.modal.inline_skipped',
-              traceId: interactionTraceContext.traceId
+          if (existing) {
+            return interaction.reply({
+              content: "❌ You already have an open ticket.",
+              flags: MessageFlags.Ephemeral
             });
-            return;
           }
 
-          const [customId, ...args] = interaction.customId.split(':');
-          const modal = client.modals.get(customId);
+          let category = guild.channels.cache.find(
+            c => c.name === "Tickets" && c.type === ChannelType.GuildCategory
+          );
 
-          if (!modal) {
-            if (!interaction.customId.includes(':')) {
-              // No registered handler and no ':' delimiter — this is an inline-awaited
-              // modal (e.g. via awaitModalSubmit). Return silently so the caller handles it.
-              return;
-            }
-
-            throw createError(
-              `No modal handler found for ${customId}`,
-              ErrorTypes.CONFIGURATION,
-              'This form is not available.',
-              withTraceContext({ customId }, interactionTraceContext)
-            );
+          if (!category) {
+            category = await guild.channels.create({
+              name: "Tickets",
+              type: ChannelType.GuildCategory
+            });
           }
 
-          try {
-            await modal.execute(interaction, client, args);
-          } catch (error) {
-            await handleInteractionError(interaction, error, withTraceContext({
-              type: 'modal',
-              customId: interaction.customId,
-              handler: 'general'
-            }, interactionTraceContext));
-          }
-        }
-      } catch (error) {
-        logger.error('Unhandled error in interactionCreate:', {
-          event: 'interaction.unhandled_error',
-          errorCode: 'INTERACTION_UNHANDLED_ERROR',
-          error,
-          traceId: interactionTraceContext.traceId,
-          interactionId: interaction.id,
-          guildId: interaction.guildId,
-          userId: interaction.user?.id
-        });
-
-        try {
-          const ephemeralErrorMessage = {
-            embeds: [MessageTemplates.ERRORS.DATABASE_ERROR('processing your interaction')],
-            flags: MessageFlags.Ephemeral
-          };
-          const editErrorMessage = {
-            embeds: [MessageTemplates.ERRORS.DATABASE_ERROR('processing your interaction')]
-          };
-
-          if (interaction.deferred) {
-            await interaction.editReply(editErrorMessage);
-          } else if (interaction.replied) {
-            await interaction.followUp(ephemeralErrorMessage);
-          } else {
-            await interaction.reply(ephemeralErrorMessage);
-          }
-        } catch (replyError) {
-          logger.error('Failed to send fallback error response:', {
-            event: 'interaction.error_response_failed',
-            errorCode: 'INTERACTION_ERROR_RESPONSE_FAILED',
-            error: replyError,
-            traceId: interactionTraceContext.traceId
+          const channel = await guild.channels.create({
+            name: `ticket-${user.username}`,
+            type: ChannelType.GuildText,
+            parent: category.id,
+            permissionOverwrites: [
+              {
+                id: guild.id,
+                deny: ["ViewChannel"]
+              },
+              {
+                id: user.id,
+                allow: ["ViewChannel", "SendMessages"]
+              }
+            ]
           });
+
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId("close_ticket")
+              .setLabel("Close Ticket")
+              .setStyle(ButtonStyle.Danger)
+          );
+
+          await channel.send({
+            content: `🎫 Welcome ${user}! Support will be with you shortly.`,
+            components: [row]
+          });
+
+          await interaction.reply({
+            content: `✅ Ticket created: ${channel}`,
+            flags: MessageFlags.Ephemeral
+          });
+
+          return;
+        }
+
+        // ❌ CLOSE TICKET BUTTON
+        if (interaction.customId === "close_ticket") {
+
+          await interaction.reply({
+            content: "Closing ticket...",
+            flags: MessageFlags.Ephemeral
+          });
+
+          setTimeout(() => {
+            interaction.channel.delete().catch(() => {});
+          }, 2000);
+
+          return;
         }
       }
-    });
+
+      // ===============================
+      // ✅ SELECT MENU (DROPDOWN)
+      // ===============================
+      else if (interaction.isStringSelectMenu()) {
+
+        if (interaction.customId === "ticket_select") {
+
+          const { guild, user } = interaction;
+          const choice = interaction.values[0];
+
+          const existing = guild.channels.cache.find(
+            c => c.name === `${choice}-${user.username}`
+          );
+
+          if (existing) {
+            return interaction.reply({
+              content: "❌ You already have an open ticket.",
+              flags: MessageFlags.Ephemeral
+            });
+          }
+
+          let categoryName = "Tickets";
+          if (choice === "support") categoryName = "Support Tickets";
+          if (choice === "report") categoryName = "Report Tickets";
+          if (choice === "claim") categoryName = "Claim Tickets";
+
+          let category = guild.channels.cache.find(
+            c => c.name === categoryName && c.type === ChannelType.GuildCategory
+          );
+
+          if (!category) {
+            category = await guild.channels.create({
+              name: categoryName,
+              type: ChannelType.GuildCategory
+            });
+          }
+
+          const channel = await guild.channels.create({
+            name: `${choice}-${user.username}`,
+            type: ChannelType.GuildText,
+            parent: category.id,
+            permissionOverwrites: [
+              {
+                id: guild.id,
+                deny: ["ViewChannel"]
+              },
+              {
+                id: user.id,
+                allow: ["ViewChannel", "SendMessages"]
+              }
+            ]
+          });
+
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId("close_ticket")
+              .setLabel("Close Ticket")
+              .setStyle(ButtonStyle.Danger)
+          );
+
+          await channel.send({
+            content: `🎫 Welcome ${user}!`,
+            components: [row]
+          });
+
+          await interaction.reply({
+            content: `✅ Ticket created: ${channel}`,
+            flags: MessageFlags.Ephemeral
+          });
+
+          return;
+        }
+      }
+
+    } catch (error) {
+      console.error("Interaction Error:", error);
+
+      if (!interaction.replied) {
+        await interaction.reply({
+          content: "❌ Error executing interaction.",
+          flags: MessageFlags.Ephemeral
+        });
+      }
+    }
+  }
+};
   }
 };
