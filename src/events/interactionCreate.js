@@ -223,6 +223,18 @@ export default {
             }
           }
         } else if (interaction.isButton()) {
+          // ✅ CLOSE TICKET BUTTON
+if (interaction.customId === "close_ticket") {
+  await interaction.reply({
+    content: "Closing ticket...",
+    flags: MessageFlags.Ephemeral
+  });
+
+  setTimeout(() => {
+    interaction.channel.delete().catch(() => {});
+  }, 2000);
+  return;
+}
           if (interaction.customId.startsWith('shared_todo_')) {
             const parts = interaction.customId.split('_');
             const buttonType = parts.slice(0, 3).join('_');
@@ -276,6 +288,85 @@ export default {
             }, interactionTraceContext));
           }
         } else if (interaction.isStringSelectMenu()) {
+          // ✅ TICKET SELECT MENU
+if (interaction.customId === "ticket_select") {
+  const STAFF_ROLE_IDS = [
+    "1483819172403347548",
+    "1483818875958067210",
+    "1469921454865911879"
+  ];
+
+  const choice = interaction.values[0];
+  const { guild, user } = interaction;
+
+  const existing = guild.channels.cache.find(
+    c => c.name === `${choice}-${user.username}`
+  );
+
+  if (existing) {
+    return interaction.reply({
+      content: "You already have an open ticket.",
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
+  let categoryName;
+  if (choice === "support") categoryName = "Support Tickets";
+  if (choice === "report") categoryName = "Report Tickets";
+  if (choice === "claim") categoryName = "Claim Tickets";
+
+  let category = guild.channels.cache.find(
+    c => c.name === categoryName
+  );
+
+  if (!category) {
+    category = await guild.channels.create({
+      name: categoryName,
+      type: 4
+    });
+  }
+
+  const channel = await guild.channels.create({
+    name: `${choice}-${user.username}`,
+    type: 0,
+    parent: category.id,
+    permissionOverwrites: [
+      {
+        id: guild.id,
+        deny: ["ViewChannel"]
+      },
+      {
+        id: user.id,
+        allow: ["ViewChannel", "SendMessages"]
+      },
+      ...STAFF_ROLE_IDS.map(id => ({
+        id,
+        allow: ["ViewChannel", "SendMessages"]
+      }))
+    ]
+  });
+
+  const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import("discord.js");
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("close_ticket")
+      .setLabel("Close Ticket")
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  await channel.send({
+    content: `Welcome ${user}`,
+    components: [row]
+  });
+
+  await interaction.reply({
+    content: `Ticket created: ${channel}`,
+    flags: MessageFlags.Ephemeral
+  });
+
+  return;
+}
           const [customId, ...args] = interaction.customId.split(':');
           const selectMenu = client.selectMenus.get(customId);
 
