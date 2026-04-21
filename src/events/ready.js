@@ -9,7 +9,13 @@ export default {
 
   async execute(client) {
     try {
-      client.user.setPresence(config.bot.presence);
+      client.user.setPresence({
+  activities: [{
+    name: 'Solo Power ⚡',
+    type: 0 // Playing
+  }],
+  status: 'online'
+});
 
       startupLog(`Ready! Logged in as ${client.user.tag}`);
       startupLog(`Serving ${client.guilds.cache.size} guild(s)`);
