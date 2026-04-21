@@ -419,14 +419,92 @@ export default {
             flags: MessageFlags.Ephemeral
           });
 
+import {
+  Events,
+  ChannelType,
+  MessageFlags,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} from "discord.js";
+
+export default {
+  name: Events.InteractionCreate,
+
+  async execute(interaction, client) {
+    try {
+
+      // ================= SLASH =================
+      if (interaction.isChatInputCommand()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
+        await command.execute(interaction, client);
+      }
+
+      // ================= BUTTON =================
+      else if (interaction.isButton()) {
+
+        const { guild, user } = interaction;
+
+        // CREATE TICKET
+        if (interaction.customId === "ticket_create") {
+
+          const existing = guild.channels.cache.find(
+            c => c.name === `ticket-${user.username}`
+          );
+
+          if (existing) {
+            return interaction.reply({
+              content: "❌ You already have a ticket.",
+              flags: MessageFlags.Ephemeral
+            });
+          }
+
+          let category = guild.channels.cache.find(
+            c => c.name === "Tickets" && c.type === ChannelType.GuildCategory
+          );
+
+          if (!category) {
+            category = await guild.channels.create({
+              name: "Tickets",
+              type: ChannelType.GuildCategory
+            });
+          }
+
+          const channel = await guild.channels.create({
+            name: `ticket-${user.username}`,
+            type: ChannelType.GuildText,
+            parent: category.id,
+            permissionOverwrites: [
+              { id: guild.id, deny: ["ViewChannel"] },
+              { id: user.id, allow: ["ViewChannel", "SendMessages"] }
+            ]
+          });
+
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId("close_ticket")
+              .setLabel("Close Ticket")
+              .setStyle(ButtonStyle.Danger)
+          );
+
+          await channel.send({
+            content: `🎫 Welcome ${user}`,
+            components: [row]
+          });
+
+          await interaction.reply({
+            content: `✅ Created: ${channel}`,
+            flags: MessageFlags.Ephemeral
+          });
+
           return;
         }
 
-        // ❌ CLOSE TICKET BUTTON
+        // CLOSE TICKET
         if (interaction.customId === "close_ticket") {
-
           await interaction.reply({
-            content: "Closing ticket...",
+            content: "Closing...",
             flags: MessageFlags.Ephemeral
           });
 
@@ -438,9 +516,7 @@ export default {
         }
       }
 
-      // ===============================
-      // ✅ SELECT MENU (DROPDOWN)
-      // ===============================
+      // ================= SELECT MENU =================
       else if (interaction.isStringSelectMenu()) {
 
         if (interaction.customId === "ticket_select") {
@@ -454,7 +530,7 @@ export default {
 
           if (existing) {
             return interaction.reply({
-              content: "❌ You already have an open ticket.",
+              content: "❌ Already opened.",
               flags: MessageFlags.Ephemeral
             });
           }
@@ -462,7 +538,6 @@ export default {
           let categoryName = "Tickets";
           if (choice === "support") categoryName = "Support Tickets";
           if (choice === "report") categoryName = "Report Tickets";
-          if (choice === "claim") categoryName = "Claim Tickets";
 
           let category = guild.channels.cache.find(
             c => c.name === categoryName && c.type === ChannelType.GuildCategory
@@ -480,14 +555,8 @@ export default {
             type: ChannelType.GuildText,
             parent: category.id,
             permissionOverwrites: [
-              {
-                id: guild.id,
-                deny: ["ViewChannel"]
-              },
-              {
-                id: user.id,
-                allow: ["ViewChannel", "SendMessages"]
-              }
+              { id: guild.id, deny: ["ViewChannel"] },
+              { id: user.id, allow: ["ViewChannel", "SendMessages"] }
             ]
           });
 
@@ -499,12 +568,12 @@ export default {
           );
 
           await channel.send({
-            content: `🎫 Welcome ${user}!`,
+            content: `🎫 Welcome ${user}`,
             components: [row]
           });
 
           await interaction.reply({
-            content: `✅ Ticket created: ${channel}`,
+            content: `✅ Created: ${channel}`,
             flags: MessageFlags.Ephemeral
           });
 
@@ -513,16 +582,14 @@ export default {
       }
 
     } catch (error) {
-      console.error("Interaction Error:", error);
+      console.error(error);
 
       if (!interaction.replied) {
         await interaction.reply({
-          content: "❌ Error executing interaction.",
+          content: "❌ Error",
           flags: MessageFlags.Ephemeral
         });
       }
     }
-  }
-};
   }
 };
