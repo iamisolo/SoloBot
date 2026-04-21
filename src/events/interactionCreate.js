@@ -322,13 +322,13 @@ if (interaction.customId === "ticket_select") {
   if (!category) {
     category = await guild.channels.create({
       name: categoryName,
-      type: 4
+      type: ChannelType.GuildCategory
     });
   }
 
   const channel = await guild.channels.create({
     name: `${choice}-${user.username}`,
-    type: 0,
+    type: ChannelType.GuildText
     parent: category.id,
     permissionOverwrites: [
       {
