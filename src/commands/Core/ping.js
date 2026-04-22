@@ -1,55 +1,61 @@
-import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
-import { logger } from '../../utils/logger.js';
-import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { SlashCommandBuilder, MessageFlags } from "discord.js";
+import { createEmbed } from "../../utils/embeds.js";
+import { logger } from "../../utils/logger.js";
+import { InteractionHelper } from "../../utils/interactionHelper.js";
 
 export default {
-    data: new SlashCommandBuilder()
-        .setName("ping")
-        .setDescription("Checks the bot's latency and API speed"),
+  data: new SlashCommandBuilder()
+    .setName("ping")
+    .setDescription("Checks the bot latency and API speed"),
 
-    async execute(interaction) {
-        const deferSuccess = await InteractionHelper.safeDefer(interaction);
-        if (!deferSuccess) {
-            logger.warn(`Ping interaction defer failed`, {
-                userId: interaction.user.id,
-                guildId: interaction.guildId,
-                commandName: 'ping'
-            });
-            return;
-        }
+  name: "ping",
 
-        try {
-            await InteractionHelper.safeEditReply(interaction, {
-                content: "Pinging...",
-            });
+  // ✅ SLASH COMMAND
+  async execute(interaction) {
+    const deferSuccess = await InteractionHelper.safeDefer(interaction);
+    if (!deferSuccess) return;
 
-            const latency = Date.now() - interaction.createdTimestamp;
-            const apiLatency = Math.round(interaction.client.ws.ping);
+    try {
+      await InteractionHelper.safeEditReply(interaction, {
+        content: "Pinging...",
+      });
 
-            const embed = createEmbed({ title: "🏓 Pong!", description: null }).addFields(
-                { name: "Bot Latency", value: `${latency}ms`, inline: true },
-                { name: "API Latency", value: `${apiLatency}ms`, inline: true },
-            );
+      const latency = Date.now() - interaction.createdTimestamp;
+      const apiLatency = Math.round(interaction.client.ws.ping);
 
-            await InteractionHelper.safeEditReply(interaction, {
-                content: null,
-                embeds: [embed],
-            });
-        } catch (error) {
-            logger.error('Ping command error:', error);
-            try {
-                return await InteractionHelper.safeReply(interaction, {
-                    embeds: [createEmbed({ title: 'System Error', description: 'Could not determine latency at this time.', color: 'error' })],
-                    flags: MessageFlags.Ephemeral,
-                });
-            } catch (replyError) {
-                logger.error('Failed to send error reply:', replyError);
-            }
-        }
-    },
+      const embed = createEmbed({
+        title: "🏓 Pong!",
+        description: null
+      }).addFields(
+        { name: "Bot Latency", value: `${latency}ms`, inline: true },
+        { name: "API Latency", value: `${apiLatency}ms`, inline: true }
+      );
+
+      await InteractionHelper.safeEditReply(interaction, {
+        content: null,
+        embeds: [embed],
+      });
+
+    } catch (error) {
+      logger.error("Ping slash error:", error);
+
+      await InteractionHelper.safeReply(interaction, {
+        content: "❌ Error",
+        flags: MessageFlags.Ephemeral
+      });
+    }
+  },
+
+  // ✅ PREFIX COMMAND
+  async executePrefix(message) {
+    try {
+      const sent = await message.reply("🏓 Pinging...");
+      const latency = sent.createdTimestamp - message.createdTimestamp;
+
+      await sent.edit(`🏓 Pong!\nBot: ${latency}ms`);
+    } catch (error) {
+      console.error("Ping prefix error:", error);
+      message.reply("❌ Error");
+    }
+  }
 };
-
-
-
-
