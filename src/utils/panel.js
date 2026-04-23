@@ -16,9 +16,23 @@ export default {
   async execute(interaction) {
 
     const embed = new EmbedBuilder()
-      .setTitle("🎟️ Support Tickets")
-.setDescription("Welcome to the support system.\n\nClick the button below to open a ticket and our staff team will assist you as soon as possible.\n\n⚡ Please avoid spam and open tickets only for real issues.")
-
+      ..setTitle("🎫 Support & Assistance Center")
+.setDescription(
+  "Welcome to the official support system.\n\n" +
+  "📩 To get assistance from our support team, click the button below to create a private ticket.\n\n" +
+  "━━━━━━━━━━━━━━━━━━\n" +
+  "📌 Guidelines:\n" +
+  "• Provide clear and detailed information\n" +
+  "• Do not spam or create unnecessary tickets\n" +
+  "• Be patient while waiting for a response\n\n" +
+  "⚡ Our support team is available to help you as quickly as possible.\n" +
+  "⏱️ Average response time: within a few minutes to a few hours\n" +
+  "━━━━━━━━━━━━━━━━━━\n" +
+  "💎 Thank you for being part of our community!"
+)
+.setColor("#00FF99")
+.setFooter({ text: "Official Support System • We are here to help you" })
+.setTimestamp()
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("ticket_create")
