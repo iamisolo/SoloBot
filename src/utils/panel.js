@@ -16,12 +16,8 @@ export default {
   async execute(interaction) {
 
     const embed = new EmbedBuilder()
-      .setTitle("🎟️ Support Ticket")
-      .setDescription(
-        "Click the button below to create a ticket.\n\nOur staff will assist you shortly."
-      )
-      .setColor(0x00ff00)
-      .setFooter({ text: "Solo Bot Ticket System" });
+      .setTitle("🎟️ Support Tickets")
+.setDescription("Welcome to the support system.\n\nClick the button below to open a ticket and our staff team will assist you as soon as possible.\n\n⚡ Please avoid spam and open tickets only for real issues.")
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
