@@ -16,7 +16,7 @@ export default {
   async execute(interaction) {
 
     const embed = new EmbedBuilder()
-      ..setTitle("🎫 Support & Assistance Center")
+      .setTitle("🎫 Support & Assistance Center")
 .setDescription(
   "Welcome to the official support system.\n\n" +
   "📩 To get assistance from our support team, click the button below to create a private ticket.\n\n" +
