@@ -44,9 +44,9 @@ export default {
     const embed = new EmbedBuilder()
       .setColor("#2b2d31")
       .setDescription(`
-╔══════════════════╗
-    🎭 **ROLE SELECTION**
-╚══════════════════╝
+╔═══════════════╗
+   🎭 **ROLE SELECTION**
+╚═══════════════╝
 
 Select your roles from the menu below!
 
