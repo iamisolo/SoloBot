@@ -1,4 +1,3 @@
-
 import {
   Events,
   ChannelType,
@@ -13,6 +12,8 @@ const STAFF_ROLE_IDS = [
   "1483818875958067210",
   "1469921454865911879"
 ];
+
+const SELF_ROLE_ID = "1485120899949531198";
 
 export default {
   name: Events.InteractionCreate,
@@ -42,7 +43,6 @@ export default {
 
         const { guild, user } = interaction;
 
-        // 🎟️ CREATE TICKET
         if (interaction.customId === "ticket_create") {
 
           await interaction.deferReply({ ephemeral: true });
@@ -101,7 +101,6 @@ export default {
           return;
         }
 
-        // ❌ CLOSE TICKET
         if (interaction.customId === "close_ticket") {
 
           await interaction.reply({
@@ -120,9 +119,11 @@ export default {
       // ================= SELECT MENU =================
       else if (interaction.isStringSelectMenu()) {
 
+        const { guild, user, member } = interaction;
+
+        // ===== TICKET SELECT =====
         if (interaction.customId === "ticket_select") {
 
-          const { guild, user } = interaction;
           const choice = interaction.values[0];
 
           const existing = guild.channels.cache.find(
@@ -185,10 +186,43 @@ export default {
 
           return;
         }
+
+        // ===== REACTION ROLE SYSTEM =====
+        if (interaction.customId === "reaction_roles") {
+
+          const selectedRoles = interaction.values;
+          const allRoles = interaction.component.options.map(opt => opt.value);
+
+          // remove unselected
+          for (const roleId of allRoles) {
+            if (!selectedRoles.includes(roleId)) {
+              await member.roles.remove(roleId).catch(() => {});
+            }
+          }
+
+          // add selected
+          for (const roleId of selectedRoles) {
+            await member.roles.add(roleId).catch(() => {});
+          }
+
+          // self role logic
+          if (selectedRoles.length > 0) {
+            await member.roles.add(SELF_ROLE_ID).catch(() => {});
+          } else {
+            await member.roles.remove(SELF_ROLE_ID).catch(() => {});
+          }
+
+          await interaction.reply({
+            content: "✅ Roles updated! Select = add | Unselect = remove",
+            flags: MessageFlags.Ephemeral
+          });
+
+          return;
+        }
       }
 
     } catch (error) {
       console.error("Interaction Error:", error);
     }
   }
-};
+};       
