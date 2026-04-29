@@ -7,6 +7,8 @@ export default {
 
   async execute(interaction) {
 
+    await interaction.deferReply({ ephemeral: true });
+
     const menu = new StringSelectMenuBuilder()
       .setCustomId("reaction_roles")
       .setPlaceholder("🎭 Select your roles")
@@ -70,9 +72,11 @@ Select your roles from the menu below!
 ❌ Unselect to remove roles
       `);
 
-    await interaction.reply({
+    await interaction.channel.send({
       embeds: [embed],
       components: [row]
     });
+
+    await interaction.deleteReply();
   }
 };
