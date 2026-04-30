@@ -169,5 +169,5 @@ export default {
 
   giveaways,
   BONUS_ROLES
-};.
+};
 
