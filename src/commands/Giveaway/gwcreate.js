@@ -28,12 +28,22 @@ function parseDuration(input) {
 export default {
   data: new SlashCommandBuilder()
     .setName("gw")
-    .setDescription("Ultra Giveaway")
+    .setDescription("Giveaway system")
     .addSubcommand(sub =>
       sub.setName("start")
-        .addStringOption(o => o.setName("prize").setRequired(true))
-        .addStringOption(o => o.setName("duration").setRequired(true))
-        .addIntegerOption(o => o.setName("winners").setRequired(true))
+        .setDescription("Start a giveaway")
+        .addStringOption(o =>
+          o.setName("prize")
+            .setDescription("Giveaway prize")
+            .setRequired(true))
+        .addStringOption(o =>
+          o.setName("duration")
+            .setDescription("10s, 5m, 1h, 1d")
+            .setRequired(true))
+        .addIntegerOption(o =>
+          o.setName("winners")
+            .setDescription("Number of winners")
+            .setRequired(true))
     ),
 
   async execute(interaction) {
@@ -52,11 +62,8 @@ export default {
 Click 🎉 to enter!
 
 **Winners:** ${winnersCount}
-**Ends:** <t:${Math.floor(endTime/1000)}:R>
 **Hosted by:** ${interaction.user}
-
-**Requirements:**
-None
+**Ends:** <t:${Math.floor(endTime/1000)}:R>
 
 **Extra Entries:**
 <@&1483138492048474215>: +2
@@ -67,10 +74,26 @@ None
 `);
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("gw_join").setLabel("🎉").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("gw_count").setLabel("0").setStyle(ButtonStyle.Secondary).setDisabled(true),
-      new ButtonBuilder().setCustomId("gw_end").setLabel("End").setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId("gw_reroll").setLabel("Reroll").setStyle(ButtonStyle.Success)
+      new ButtonBuilder()
+        .setCustomId("gw_join")
+        .setLabel("🎉")
+        .setStyle(ButtonStyle.Primary),
+
+      new ButtonBuilder()
+        .setCustomId("gw_count")
+        .setLabel("0")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true),
+
+      new ButtonBuilder()
+        .setCustomId("gw_end")
+        .setLabel("End")
+        .setStyle(ButtonStyle.Danger),
+
+      new ButtonBuilder()
+        .setCustomId("gw_reroll")
+        .setLabel("Reroll")
+        .setStyle(ButtonStyle.Success)
     );
 
     const msg = await interaction.reply({
@@ -82,30 +105,10 @@ None
     giveaways.set(msg.id, {
       entries: new Map(),
       winnersCount,
-      endTime,
       message: msg
     });
 
-    // 🔄 LIVE TIMER UPDATE
-    const interval = setInterval(async () => {
-      const data = giveaways.get(msg.id);
-      if (!data) return clearInterval(interval);
-
-      const timeLeft = data.endTime - Date.now();
-      if (timeLeft <= 0) {
-        clearInterval(interval);
-        endGiveaway(msg.id);
-        return;
-      }
-
-      embed.setDescription(embed.data.description.replace(
-        /Ends: <t:\d+:R>/,
-        `Ends: <t:${Math.floor(data.endTime/1000)}:R>`
-      ));
-
-      await msg.edit({ embeds: [embed] });
-
-    }, 10000);
+    setTimeout(() => endGiveaway(msg.id), ms);
   },
 
   giveaways,
@@ -113,7 +116,7 @@ None
 };
 
 // 🎯 END FUNCTION
-async function endGiveaway(id) {
+function endGiveaway(id) {
   const data = giveaways.get(id);
   if (!data) return;
 
@@ -136,4 +139,4 @@ async function endGiveaway(id) {
   }
 
   data.message.channel.send(`🎉 Winners: ${winners.join(", ")}`);
-  }
+}
