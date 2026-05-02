@@ -71,6 +71,16 @@ export default {
         const { guild, user, member } = interaction;
 
         if (interaction.customId === "gw_join") {
+          
+          if (!
+              member.roles.cache.has(VERIFIED_ROLE_ID)) {
+    return interaction.reply({
+      content: "❌ You must be verified to join this giveaway",
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
+  const data = giveaways.get(interaction.message.id);
 
           const data = giveaways.get(interaction.message.id);
           if (!data) return;
@@ -279,6 +289,104 @@ export default {
         const { guild, user, member } = interaction;
 
         if (interaction.customId === "gw_join") {
+
+          const data = giveaways.get(interaction.message.id);
+          if (!data) return;
+
+          if (data.entries.has(user.id)) {
+            data.entries.delete(user.id);
+          } else {
+            let entries = 1;
+
+            for (const roleId in BONUS_ROLES) {
+              if (member.roles.cache.has(roleId)) {
+                entries += BONUS_ROLES[roleId];
+              }
+            }
+
+            data.entries.set(user.id, entries);
+          }
+import {
+  Events,
+  ChannelType,
+  MessageFlags,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} from "discord.js";
+
+import gwCommand from "../commands/Giveaway/gwcreate.js";
+
+const { giveaways, BONUS_ROLES } = gwCommand;
+
+const STAFF_ROLE_IDS = [
+  "1483819172403347548",
+  "1483818875958067210",
+  "1469921454865911879",
+  "1498955717799968819"
+];
+
+const GIVEAWAY_STAFF_ROLE_IDS = [
+  "1469921454865911879",
+  "1498955717799968819",
+  "1483818875958067210",
+  "1483819172403347548",
+  "1480860174116720690"
+];
+
+const VERIFIED_ROLE_ID = "1485246026913808384";
+const SELF_ROLE_ID = "1485120899949531198";
+
+function endGiveaway(id) {
+  const data = giveaways.get(id);
+  if (!data) return;
+
+  let pool = [];
+
+  for (const [userId, entry] of data.entries) {
+    for (let i = 0; i < entry; i++) {
+      pool.push(userId);
+    }
+  }
+
+  if (pool.length === 0) {
+    data.message.channel.send("No participants.");
+    return;
+  }
+
+  const winners = [];
+  for (let i = 0; i < data.winnersCount; i++) {
+    winners.push(`<@${pool[Math.floor(Math.random() * pool.length)]}>`);
+  }
+
+  data.message.channel.send(`🎉 Winners: ${winners.join(", ")}`);
+}
+
+export default {
+  name: Events.InteractionCreate,
+
+  async execute(interaction, client) {
+    try {
+
+      if (interaction.isChatInputCommand()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
+
+        await command.execute(interaction, client);
+      }
+
+      else if (interaction.isButton()) {
+
+        const { guild, user, member } = interaction;
+
+        if (interaction.customId === "gw_join") {
+
+          if (!member.roles.cache.has(VERIFIED_ROLE_ID)) {
+            return interaction.reply({
+              content: "❌ You must be verified to join this giveaway",
+              flags: MessageFlags.Ephemeral
+            });
+          }
 
           const data = giveaways.get(interaction.message.id);
           if (!data) return;
