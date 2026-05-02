@@ -71,27 +71,32 @@ export default {
         const { guild, user, member } = interaction;
 
         if (interaction.customId === "gw_join") {
-          
-          if (!
-              member.roles.cache.has(VERIFIED_ROLE_ID)) {
+
+  if (!member.roles.cache.has(VERIFIED_ROLE_ID)) {
     return interaction.reply({
       content: "❌ You must be verified to join this giveaway",
       flags: MessageFlags.Ephemeral
     });
   }
-          const data = giveaways.get(interaction.message.id);
-          if (!data) return;
 
-          if (data.entries.has(user.id)) {
-            data.entries.delete(user.id);
-          } else {
-            let entries = 1;
+  const data = giveaways.get(interaction.message.id);
+  if (!data) return;
 
-            for (const roleId in BONUS_ROLES) {
-              if (member.roles.cache.has(roleId)) {
-                entries += BONUS_ROLES[roleId];
-              }
-            }
+  if (data.entries.has(user.id)) {
+    data.entries.delete(user.id);
+  } else {
+    let entries = 1;
+
+    for (const roleId in BONUS_ROLES) {
+      if (member.roles.cache.has(roleId)) {
+        entries += BONUS_ROLES[roleId];
+      }
+    }
+
+    data.entries.set(user.id, entries);
+  }
+
+}
 
             data.entries.set(user.id, entries);
           }
