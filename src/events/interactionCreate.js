@@ -79,9 +79,6 @@ export default {
       flags: MessageFlags.Ephemeral
     });
   }
-
-  const data = giveaways.get(interaction.message.id);
-
           const data = giveaways.get(interaction.message.id);
           if (!data) return;
 
