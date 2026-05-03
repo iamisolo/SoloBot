@@ -5,19 +5,23 @@ export default {
   data: new SlashCommandBuilder()
     .setName("gwreroll")
     .setDescription("Reroll giveaway")
-    .addStringOption(o => o.setName("message_id").setRequired(true))
+    .addStringOption(o =>
+      o.setName("message_id").setDescription("Giveaway message ID").setRequired(true)
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   async execute(interaction) {
     const id = interaction.options.getString("message_id");
     const data = giveaways.get(id);
 
-    if (!data) return interaction.reply({ content: "Not found", ephemeral: true });
+    if (!data) {
+      return interaction.reply({ content: "Not found", ephemeral: true });
+    }
 
     const pool = [];
 
-    for (const [userId, count] of data.entries) {
-      for (let i = 0; i < count; i++) pool.push(userId);
+    for (const [u, c] of data.entries) {
+      for (let i = 0; i < c; i++) pool.push(u);
     }
 
     const winners = [];
@@ -31,7 +35,7 @@ export default {
       }
     }
 
-    interaction.channel.send(`🔁 Reroll Winners: ${winners.join(", ")}`);
+    interaction.channel.send(`🔁 Rerolled: ${winners.join(", ")}`);
 
     return interaction.reply({ content: "Rerolled", ephemeral: true });
   }
