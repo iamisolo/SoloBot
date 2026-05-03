@@ -1,10 +1,10 @@
 import {
   SlashCommandBuilder,
   EmbedBuilder,
+  PermissionFlagsBits,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
-  PermissionFlagsBits
+  ButtonStyle
 } from "discord.js";
 
 export const giveaways = new Map();
@@ -52,10 +52,7 @@ export default {
 
     const ms = parseDuration(duration);
     if (!ms) {
-      return interaction.reply({
-        content: "❌ Invalid duration",
-        ephemeral: true
-      });
+      return interaction.reply({ content: "Invalid duration", ephemeral: true });
     }
 
     const endTime = Date.now() + ms;
@@ -65,7 +62,7 @@ export default {
       .setTitle(`🎉 ${prize}`)
       .setDescription(
         `Click 🎉 to join!\n\n` +
-        `👑 Host: ${host}\n` +
+        `👑 Host: <@${host.id}>\n` +
         `👥 Winners: ${winners}\n` +
         `⏰ Ends: <t:${Math.floor(endTime / 1000)}:R>\n\n` +
         `🎁 Extra Entries:\n` +
@@ -83,11 +80,10 @@ export default {
         .setStyle(ButtonStyle.Primary)
     );
 
-    await interaction.deferReply();
-
-    const msg = await interaction.editReply({
+    const msg = await interaction.reply({
       embeds: [embed],
-      components: [row]
+      components: [row],
+      fetchReply: true
     });
 
     giveaways.set(msg.id, {
@@ -98,9 +94,7 @@ export default {
       channelId: interaction.channel.id
     });
 
-    setTimeout(() => {
-      endGiveaway(msg.id, interaction.client);
-    }, ms);
+    setTimeout(() => endGiveaway(msg.id, interaction.client), ms);
   }
 };
 
@@ -114,11 +108,13 @@ function endGiveaway(id, client) {
   const pool = [];
 
   for (const [userId, count] of data.entries) {
-    for (let i = 0; i < count; i++) pool.push(userId);
+    for (let i = 0; i < count; i++) {
+      pool.push(userId);
+    }
   }
 
   if (!pool.length) {
-    channel.send("❌ No participants.");
+    channel.send("No participants.");
     giveaways.delete(id);
     return;
   }
