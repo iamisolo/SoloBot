@@ -1,14 +1,8 @@
-import {
-  SlashCommandBuilder,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle
-} from "discord.js";
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from "discord.js";
 
-const giveaways = new Map();
+export const giveaways = new Map();
 
-const BONUS_ROLES = {
+export const BONUS_ROLES = {
   "1483138492048474215": 2,
   "1483138651767701565": 5,
   "1483138868071895190": 10,
@@ -19,124 +13,97 @@ const BONUS_ROLES = {
 function parseDuration(input) {
   const time = parseInt(input);
   if (input.endsWith("s")) return time * 1000;
-  if (input.endsWith("m")) return time * 60000;
-  if (input.endsWith("h")) return time * 3600000;
-  if (input.endsWith("d")) return time * 86400000;
-  return 0;
+  if (input.endsWith("m")) return time * 60 * 1000;
+  if (input.endsWith("h")) return time * 60 * 60 * 1000;
+  if (input.endsWith("d")) return time * 24 * 60 * 60 * 1000;
+  return null;
 }
 
 export default {
   data: new SlashCommandBuilder()
-    .setName("gw")
-    .setDescription("Giveaway system")
-    .addSubcommand(sub =>
-      sub.setName("start")
-        .setDescription("Start a giveaway")
-        .addStringOption(o =>
-          o.setName("prize")
-            .setDescription("Giveaway prize")
-            .setRequired(true))
-        .addStringOption(o =>
-          o.setName("duration")
-            .setDescription("10s, 5m, 1h, 1d")
-            .setRequired(true))
-        .addIntegerOption(o =>
-          o.setName("winners")
-            .setDescription("Number of winners")
-            .setRequired(true))
-    ),
+    .setName("gwcreate")
+    .setDescription("Create a giveaway")
+    .addIntegerOption(o => o.setName("winners").setRequired(true))
+    .addStringOption(o => o.setName("prize").setRequired(true))
+    .addStringOption(o => o.setName("duration").setRequired(true))
+    .addUserOption(o => o.setName("host").setRequired(false))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   async execute(interaction) {
-
+    const winners = interaction.options.getInteger("winners");
     const prize = interaction.options.getString("prize");
     const duration = interaction.options.getString("duration");
-    const winnersCount = interaction.options.getInteger("winners");
+    const host = interaction.options.getUser("host") || interaction.user;
 
     const ms = parseDuration(duration);
+    if (!ms) return interaction.reply({ content: "Invalid duration", ephemeral: true });
+
     const endTime = Date.now() + ms;
 
     const embed = new EmbedBuilder()
-      .setTitle(`🎉 ${prize}`)
       .setColor("#2b2d31")
-      .setDescription(`
-Click 🎉 to enter!
+      .setTitle(`🎉 ${prize}`)
+      .setDescription(
+        `Click 🎉 to join!\n\n` +
+        `👑 Host: ${host}\n` +
+        `👥 Winners: ${winners}\n` +
+        `⏰ Ends: <t:${Math.floor(endTime / 1000)}:R>\n\n` +
+        `🎁 Extra Entries:\n` +
+        `<@&1483138492048474215>: +2\n` +
+        `<@&1483138651767701565>: +5\n` +
+        `<@&1483138868071895190>: +10\n` +
+        `<@&1483139151426752753>: +20\n` +
+        `<@&1483139317495894056>: +50`
+      )
+      .setFooter({ text: "Good luck!" });
 
-**Winners:** ${winnersCount}
-**Hosted by:** ${interaction.user}
-**Ends:** <t:${Math.floor(endTime/1000)}:R>
-
-**Extra Entries:**
-<@&1483138492048474215>: +2
-<@&1483138651767701565>: +5
-<@&1483138868071895190>: +10
-<@&1483139151426752753>: +20
-<@&1483139317495894056>: +50
-`);
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("gw_join")
-        .setLabel("🎉")
-        .setStyle(ButtonStyle.Primary),
-
-      new ButtonBuilder()
-        .setCustomId("gw_count")
-        .setLabel("0")
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(true),
-
-      new ButtonBuilder()
-        .setCustomId("gw_end")
-        .setLabel("End")
-        .setStyle(ButtonStyle.Danger),
-
-      new ButtonBuilder()
-        .setCustomId("gw_reroll")
-        .setLabel("Reroll")
-        .setStyle(ButtonStyle.Success)
-    );
-
-    const msg = await interaction.reply({
-      embeds: [embed],
-      components: [row],
-      fetchReply: true
-    });
+    const msg = await interaction.reply({ embeds: [embed], fetchReply: true });
 
     giveaways.set(msg.id, {
+      prize,
+      hostId: host.id,
+      winners,
       entries: new Map(),
-      winnersCount,
-      message: msg
+      channelId: interaction.channel.id,
+      messageId: msg.id
     });
 
-    setTimeout(() => endGiveaway(msg.id), ms);
-  },
-
-  giveaways,
-  BONUS_ROLES
+    setTimeout(() => endGiveaway(msg.id, interaction.client), ms);
+  }
 };
 
-// 🎯 END FUNCTION
-function endGiveaway(id) {
+function endGiveaway(id, client) {
   const data = giveaways.get(id);
   if (!data) return;
 
-  let pool = [];
+  const channel = client.channels.cache.get(data.channelId);
+  if (!channel) return;
 
-  for (const [userId, entry] of data.entries) {
-    for (let i = 0; i < entry; i++) {
-      pool.push(userId);
-    }
+  const pool = [];
+
+  for (const [userId, count] of data.entries) {
+    for (let i = 0; i < count; i++) pool.push(userId);
   }
 
-  if (pool.length === 0) {
-    data.message.channel.send("No participants.");
+  if (!pool.length) {
+    channel.send("No participants.");
+    giveaways.delete(id);
     return;
   }
 
   const winners = [];
-  for (let i = 0; i < data.winnersCount; i++) {
-    winners.push(`<@${pool[Math.floor(Math.random() * pool.length)]}>`);
+  const used = new Set();
+
+  while (winners.length < data.winners && used.size < pool.length) {
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    if (!used.has(pick)) {
+      used.add(pick);
+      winners.push(`<@${pick}>`);
+    }
   }
 
-  data.message.channel.send(`🎉 Winners: ${winners.join(", ")}`);
+  channel.send(`🎉 Winners: ${winners.join(", ")}`);
+  giveaways.delete(id);
 }
+
+export { endGiveaway };
