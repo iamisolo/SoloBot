@@ -594,7 +594,17 @@ export default {
       }
 
     } catch (error) {
-      console.error("Interaction Error:", error);
-    }
+  console.error("Interaction Error:", error);
+
+  if (interaction.replied || interaction.deferred) {
+    await interaction.followUp({
+      content: "❌ Error occurred",
+      flags: MessageFlags.Ephemeral
+    });
+  } else {
+    await interaction.reply({
+      content: "❌ Error occurred",
+      flags: MessageFlags.Ephemeral
+    });
   }
-};
+}
