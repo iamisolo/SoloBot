@@ -5,14 +5,18 @@ export default {
   data: new SlashCommandBuilder()
     .setName("gwdelete")
     .setDescription("Delete giveaway")
-    .addStringOption(o => o.setName("message_id").setRequired(true))
+    .addStringOption(o =>
+      o.setName("message_id").setDescription("Giveaway message ID").setRequired(true)
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   async execute(interaction) {
     const id = interaction.options.getString("message_id");
-    const data = giveaways.get(id);
 
-    if (!data) return interaction.reply({ content: "Not found", ephemeral: true });
+    const data = giveaways.get(id);
+    if (!data) {
+      return interaction.reply({ content: "Not found", ephemeral: true });
+    }
 
     giveaways.delete(id);
 
