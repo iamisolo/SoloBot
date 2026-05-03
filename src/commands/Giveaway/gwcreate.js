@@ -23,10 +23,18 @@ export default {
   data: new SlashCommandBuilder()
     .setName("gwcreate")
     .setDescription("Create a giveaway")
-    .addIntegerOption(o => o.setName("winners").setRequired(true))
-    .addStringOption(o => o.setName("prize").setRequired(true))
-    .addStringOption(o => o.setName("duration").setRequired(true))
-    .addUserOption(o => o.setName("host").setRequired(false))
+    .addIntegerOption(o =>
+      o.setName("winners").setDescription("Number of winners").setRequired(true)
+    )
+    .addStringOption(o =>
+      o.setName("prize").setDescription("Giveaway prize").setRequired(true)
+    )
+    .addStringOption(o =>
+      o.setName("duration").setDescription("10s / 5m / 1h / 1d").setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("host").setDescription("Optional host").setRequired(false)
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   async execute(interaction) {
@@ -36,7 +44,9 @@ export default {
     const host = interaction.options.getUser("host") || interaction.user;
 
     const ms = parseDuration(duration);
-    if (!ms) return interaction.reply({ content: "Invalid duration", ephemeral: true });
+    if (!ms) {
+      return interaction.reply({ content: "Invalid duration", ephemeral: true });
+    }
 
     const endTime = Date.now() + ms;
 
@@ -54,8 +64,7 @@ export default {
         `<@&1483138868071895190>: +10\n` +
         `<@&1483139151426752753>: +20\n` +
         `<@&1483139317495894056>: +50`
-      )
-      .setFooter({ text: "Good luck!" });
+      );
 
     const msg = await interaction.reply({ embeds: [embed], fetchReply: true });
 
@@ -64,8 +73,7 @@ export default {
       hostId: host.id,
       winners,
       entries: new Map(),
-      channelId: interaction.channel.id,
-      messageId: msg.id
+      channelId: interaction.channel.id
     });
 
     setTimeout(() => endGiveaway(msg.id, interaction.client), ms);
@@ -105,5 +113,3 @@ function endGiveaway(id, client) {
   channel.send(`🎉 Winners: ${winners.join(", ")}`);
   giveaways.delete(id);
 }
-
-export { endGiveaway };
