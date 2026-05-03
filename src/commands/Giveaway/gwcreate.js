@@ -1,4 +1,11 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from "discord.js";
+import {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  PermissionFlagsBits
+} from "discord.js";
 
 export const giveaways = new Map();
 
@@ -45,7 +52,10 @@ export default {
 
     const ms = parseDuration(duration);
     if (!ms) {
-      return interaction.reply({ content: "Invalid duration", ephemeral: true });
+      return interaction.reply({
+        content: "❌ Invalid duration",
+        ephemeral: true
+      });
     }
 
     const endTime = Date.now() + ms;
@@ -66,7 +76,19 @@ export default {
         `<@&1483139317495894056>: +50`
       );
 
-    const msg = await interaction.reply({ embeds: [embed], fetchReply: true });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("gw_join")
+        .setLabel("🎉 Join")
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    await interaction.deferReply();
+
+    const msg = await interaction.editReply({
+      embeds: [embed],
+      components: [row]
+    });
 
     giveaways.set(msg.id, {
       prize,
@@ -76,7 +98,9 @@ export default {
       channelId: interaction.channel.id
     });
 
-    setTimeout(() => endGiveaway(msg.id, interaction.client), ms);
+    setTimeout(() => {
+      endGiveaway(msg.id, interaction.client);
+    }, ms);
   }
 };
 
@@ -94,7 +118,7 @@ function endGiveaway(id, client) {
   }
 
   if (!pool.length) {
-    channel.send("No participants.");
+    channel.send("❌ No participants.");
     giveaways.delete(id);
     return;
   }
