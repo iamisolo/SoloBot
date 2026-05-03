@@ -1,21 +1,43 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 import { giveaways } from "./gwcreate.js";
-import { endGiveaway } from "./gwcreate.js";
 
 export default {
   data: new SlashCommandBuilder()
     .setName("gwend")
     .setDescription("End giveaway")
-    .addStringOption(o => o.setName("message_id").setRequired(true))
+    .addStringOption(o =>
+      o.setName("message_id").setDescription("Giveaway message ID").setRequired(true)
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
-  async execute(interaction) {
+  async execute(interaction, client) {
     const id = interaction.options.getString("message_id");
     const data = giveaways.get(id);
 
-    if (!data) return interaction.reply({ content: "Not found", ephemeral: true });
+    if (!data) {
+      return interaction.reply({ content: "Not found", ephemeral: true });
+    }
 
-    endGiveaway(id, interaction.client);
+    const channel = interaction.channel;
+
+    const pool = [];
+    for (const [u, c] of data.entries) {
+      for (let i = 0; i < c; i++) pool.push(u);
+    }
+
+    const winners = [];
+    const used = new Set();
+
+    while (winners.length < data.winners && used.size < pool.length) {
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      if (!used.has(pick)) {
+        used.add(pick);
+        winners.push(`<@${pick}>`);
+      }
+    }
+
+    channel.send(`🎉 Winners: ${winners.join(", ")}`);
+
     giveaways.delete(id);
 
     return interaction.reply({ content: "Ended", ephemeral: true });
