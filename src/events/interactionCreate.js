@@ -7,11 +7,8 @@ import {
   ButtonStyle
 } from "discord.js";
 
-import gwCommand from "../commands/Giveaway/gwcreate.js";
+import { giveaways, BONUS_ROLES } from "../commands/Giveaway/gwcreate.js";
 
-const { giveaways, BONUS_ROLES } = gwCommand;
-
-// 🎯 ROLE CONFIG
 const STAFF_ROLE_IDS = [
   "1483819172403347548",
   "1483818875958067210",
@@ -30,16 +27,12 @@ const GIVEAWAY_STAFF_ROLE_IDS = [
 const VERIFIED_ROLE_ID = "1485246026913808384";
 const SELF_ROLE_ID = "1485120899949531198";
 
-// =======================
-// 🎮 BUTTON ROW (GIVEAWAY)
-// =======================
 function getRow(count, isPrivileged) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("gw_join")
       .setLabel("🎉 Join")
       .setStyle(ButtonStyle.Primary),
-
     new ButtonBuilder()
       .setCustomId("gw_count")
       .setLabel(`${count}`)
@@ -53,7 +46,6 @@ function getRow(count, isPrivileged) {
         .setCustomId("gw_end")
         .setLabel("End")
         .setStyle(ButtonStyle.Danger),
-
       new ButtonBuilder()
         .setCustomId("gw_reroll")
         .setLabel("Reroll")
@@ -64,9 +56,6 @@ function getRow(count, isPrivileged) {
   return row;
 }
 
-// =======================
-// 🎯 GIVEAWAY END
-// =======================
 function endGiveaway(id, client) {
   const data = giveaways.get(id);
   if (!data) return;
@@ -74,7 +63,7 @@ function endGiveaway(id, client) {
   const channel = client.channels.cache.get(data.channelId);
   if (!channel) return;
 
-  let pool = [];
+  const pool = [];
 
   for (const [userId, count] of data.entries) {
     for (let i = 0; i < count; i++) {
@@ -82,7 +71,7 @@ function endGiveaway(id, client) {
     }
   }
 
-  if (pool.length === 0) {
+  if (!pool.length) {
     channel.send("❌ No participants.");
     giveaways.delete(id);
     return;
@@ -99,14 +88,10 @@ function endGiveaway(id, client) {
     }
   }
 
-  channel.send(`🎉 **Giveaway Ended!**\n🏆 Winners: ${winners.join(", ")}`);
-
+  channel.send(`🎉 Winners: ${winners.join(", ")}`);
   giveaways.delete(id);
 }
 
-// =======================
-// 🎯 MAIN HANDLER
-// =======================
 export default {
   name: Events.InteractionCreate,
 
@@ -114,9 +99,6 @@ export default {
     try {
       const { guild, user, member } = interaction;
 
-      // =======================
-      // COMMAND HANDLER
-      // =======================
       if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
@@ -124,15 +106,16 @@ export default {
         return;
       }
 
-      // =======================
-      // BUTTON HANDLER
-      // =======================
       if (interaction.isButton()) {
         const data = giveaways.get(interaction.message.id);
 
-        // ❌ GIVEAWAY JOIN
         if (interaction.customId === "gw_join") {
-          if (!data) return;
+          if (!data) {
+            return interaction.reply({
+              content: "❌ Giveaway not found",
+              flags: MessageFlags.Ephemeral
+            });
+          }
 
           const isHost = user.id === data.hostId;
           const isStaff = member.roles.cache.some(r =>
@@ -141,19 +124,18 @@ export default {
 
           if (isHost) {
             return interaction.reply({
-              content: "❌ Host cannot join giveaway",
+              content: "❌ Host cannot join",
               flags: MessageFlags.Ephemeral
             });
           }
 
           if (!member.roles.cache.has(VERIFIED_ROLE_ID) && !isStaff) {
             return interaction.reply({
-              content: "❌ You must be verified to join",
+              content: "❌ You must be verified",
               flags: MessageFlags.Ephemeral
             });
           }
 
-          // toggle entry
           if (data.entries.has(user.id)) {
             data.entries.delete(user.id);
           } else {
@@ -168,7 +150,6 @@ export default {
             data.entries.set(user.id, entries);
           }
 
-          // FIXED COUNT (SUM not size)
           let count = 0;
           for (const v of data.entries.values()) {
             count += v;
@@ -176,7 +157,9 @@ export default {
 
           const isPrivileged =
             isHost ||
-            member.roles.cache.some(r => GIVEAWAY_STAFF_ROLE_IDS.includes(r.id));
+            member.roles.cache.some(r =>
+              GIVEAWAY_STAFF_ROLE_IDS.includes(r.id)
+            );
 
           await interaction.update({
             components: [getRow(count, isPrivileged)]
@@ -185,9 +168,6 @@ export default {
           return;
         }
 
-        // =======================
-        // END GIVEAWAY
-        // =======================
         if (interaction.customId === "gw_end") {
           if (!data) return;
 
@@ -206,14 +186,11 @@ export default {
           endGiveaway(interaction.message.id, client);
 
           return interaction.reply({
-            content: "🛑 Giveaway Ended!",
+            content: "🛑 Giveaway Ended",
             flags: MessageFlags.Ephemeral
           });
         }
 
-        // =======================
-        // REROLL GIVEAWAY
-        // =======================
         if (interaction.customId === "gw_reroll") {
           if (!data) return;
 
@@ -232,14 +209,11 @@ export default {
           endGiveaway(interaction.message.id, client);
 
           return interaction.reply({
-            content: "🔁 Giveaway Rerolled!",
+            content: "🔁 Rerolled",
             flags: MessageFlags.Ephemeral
           });
         }
 
-        // =======================
-        // TICKET SYSTEM
-        // =======================
         if (interaction.customId === "ticket_create") {
           await interaction.deferReply({ ephemeral: true });
 
@@ -269,7 +243,7 @@ export default {
             parent: category?.id || null,
             permissionOverwrites: [
               { id: guild.id, deny: ["ViewChannel"] },
-              { id: user.id, allow: ["ViewChannel", "SendMessages"] },
+              { id: user.id, allow: ["ViewChannel"], deny: ["SendMessages"] },
               {
                 id: VERIFIED_ROLE_ID,
                 allow: ["ViewChannel", "SendMessages"]
@@ -298,42 +272,40 @@ export default {
           });
         }
 
-        // CLOSE TICKET
         if (interaction.customId === "close_ticket") {
           await interaction.reply({
-            content: "Closing ticket...",
+            content: "Closing...",
             flags: MessageFlags.Ephemeral
           });
 
-          setTimeout(() => interaction.channel.delete().catch(() => {}), 2000);
+          setTimeout(() => {
+            interaction.channel.delete().catch(() => {});
+          }, 2000);
+
           return;
         }
       }
 
-      // =======================
-      // SELECT MENU (ROLES)
-      // =======================
       if (interaction.isStringSelectMenu()) {
         if (interaction.customId !== "reaction_roles") return;
 
-        const { member } = interaction;
         const selected = interaction.values;
         const all = interaction.component.options.map(o => o.value);
 
         for (const roleId of all) {
           if (!selected.includes(roleId)) {
-            await member.roles.remove(roleId).catch(() => {});
+            await interaction.member.roles.remove(roleId).catch(() => {});
           }
         }
 
         for (const roleId of selected) {
-          await member.roles.add(roleId).catch(() => {});
+          await interaction.member.roles.add(roleId).catch(() => {});
         }
 
         if (selected.length > 0) {
-          await member.roles.add(SELF_ROLE_ID).catch(() => {});
+          await interaction.member.roles.add(SELF_ROLE_ID).catch(() => {});
         } else {
-          await member.roles.remove(SELF_ROLE_ID).catch(() => {});
+          await interaction.member.roles.remove(SELF_ROLE_ID).catch(() => {});
         }
 
         return interaction.reply({
@@ -342,20 +314,20 @@ export default {
         });
       }
 
-    } catch (err) {
-      console.error("Interaction Error:", err);
+    } catch (error) {
+      console.error("Interaction Error:", error);
 
       if (interaction.replied || interaction.deferred) {
-        return interaction.followUp({
+        await interaction.followUp({
+          content: "❌ Error occurred",
+          flags: MessageFlags.Ephemeral
+        });
+      } else {
+        await interaction.reply({
           content: "❌ Error occurred",
           flags: MessageFlags.Ephemeral
         });
       }
-
-      return interaction.reply({
-        content: "❌ Error occurred",
-        flags: MessageFlags.Ephemeral
-      });
     }
   }
 };
