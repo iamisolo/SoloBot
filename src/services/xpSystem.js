@@ -5,7 +5,7 @@ import {
   getXpForLevel,
   updateRoles,
   checkCooldown
-} from '../systems/leveling.js';
+} from '../services/leveling.js';
 
 /* CONFIG */
 const XP_MIN = 15;
