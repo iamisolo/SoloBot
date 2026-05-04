@@ -3,91 +3,101 @@ import {
   getUserLevelData,
   saveUserLevelData,
   getXpForLevel,
-  updateRoles,
+  giveRoles,
   checkCooldown
 } from '../services/leveling.js';
 
-/* CONFIG */
-const XP_MIN = 15;
-const XP_MAX = 25;
+const XP_MIN = 10;
+const XP_MAX = 30;
 const COOLDOWN = 60;
-
 const LEVEL_CHANNEL_ID = "1480931561556938773";
 
 export async function addXp(client, guild, member) {
   try {
-    if (!guild || !member || member.user.bot) return;
+    if (!guild || !member) return;
+    if (!member.user || member.user.bot) return;
 
-    const canGain = checkCooldown(guild.id, member.id, COOLDOWN);
-    if (!canGain) return;
+    const allowed = checkCooldown(guild.id, member.id, COOLDOWN);
+    if (!allowed) return;
 
-    const xpGain = randomXp();
-
+    const xpGain = generateXp();
     const data = await getUserLevelData(client, guild.id, member.id);
+
+    if (!data.messages) data.messages = 0;
 
     data.xp += xpGain;
     data.totalXp += xpGain;
+    data.messages += 1;
     data.lastMessage = Date.now();
-    data.messages = (data.messages || 0) + 1;
 
     let leveledUp = false;
     let levelsGained = 0;
 
-    while (data.xp >= getXpForLevel(data.level + 1)) {
-      data.xp -= getXpForLevel(data.level + 1);
-      data.level++;
+    while (true) {
+      const needed = getXpForLevel(data.level + 1);
+      if (data.xp < needed) break;
+
+      data.xp -= needed;
+      data.level += 1;
       leveledUp = true;
       levelsGained++;
 
-      await updateRoles(guild, member, data.level);
+      await handleRoleRewards(guild, member, data.level);
     }
 
     await saveUserLevelData(client, guild.id, member.id, data);
 
     if (leveledUp) {
-      await handleLevelUp(client, guild, member, data.level, levelsGained);
+      await sendLevelUpMessage(client, guild, member, data, levelsGained);
     }
-
-  } catch (err) {
-    logger.error('XP System Error:', err);
+  } catch (error) {
+    logger.error('XP Add Error:', error);
   }
 }
 
-/* ---------- LEVEL UP HANDLER ---------- */
-async function handleLevelUp(client, guild, member, level, levelsGained) {
+async function handleRoleRewards(guild, member, level) {
   try {
-    const channel = getLevelChannel(guild);
+    await giveRoles(guild, member, level);
+  } catch (error) {
+    logger.error('Role Reward Error:', error);
+  }
+}
+
+async function sendLevelUpMessage(client, guild, member, data, levelsGained) {
+  try {
+    const channel = resolveChannel(guild);
     if (!channel) return;
 
-    const msg = formatLevelMessage(member, level, levelsGained);
-
-    await channel.send(msg).catch(() => {});
-  } catch (err) {
-    logger.error('LevelUp Error:', err);
+    const message = buildLevelMessage(member, data.level, levelsGained);
+    await channel.send(message).catch(() => {});
+  } catch (error) {
+    logger.error('Level Message Error:', error);
   }
 }
 
-/* ---------- CHANNEL FIXED ---------- */
-function getLevelChannel(guild) {
-  return guild.channels.cache.get(LEVEL_CHANNEL_ID) 
-    || guild.systemChannel 
-    || null;
+function resolveChannel(guild) {
+  const fixed = guild.channels.cache.get(LEVEL_CHANNEL_ID);
+  if (fixed) return fixed;
+
+  if (guild.systemChannel) return guild.systemChannel;
+
+  return null;
 }
 
-/* ---------- MESSAGE FORMAT ---------- */
-function formatLevelMessage(member, level, levelsGained) {
+function buildLevelMessage(member, level, levelsGained) {
   if (levelsGained > 1) {
-    return `🚀 <@${member.id}> jumped ${levelsGained} levels and reached **Level ${level}**!`;
+    return `🚀 <@${member.id}> jumped ${levelsGained} levels and reached **Level ${level}**! Keep grinding 💪`;
   }
-  return `🎉 <@${member.id}> reached **Level ${level}**!`;
+
+  return `🎉 <@${member.id}> reached **Level ${level}**! GG 🔥`;
 }
 
-/* ---------- RANDOM XP ---------- */
-function randomXp() {
-  return Math.floor(Math.random() * (XP_MAX - XP_MIN + 1)) + XP_MIN;
+function generateXp() {
+  const base = Math.floor(Math.random() * (XP_MAX - XP_MIN + 1)) + XP_MIN;
+  const bonus = Math.random() < 0.1 ? Math.floor(base * 0.5) : 0;
+  return base + bonus;
 }
 
-/* ---------- BONUS XP ---------- */
 export async function giveBonusXp(client, guild, member, amount = 50) {
   try {
     const data = await getUserLevelData(client, guild.id, member.id);
@@ -96,13 +106,37 @@ export async function giveBonusXp(client, guild, member, amount = 50) {
     data.totalXp += amount;
 
     await saveUserLevelData(client, guild.id, member.id, data);
-  } catch (err) {
-    logger.error('Bonus XP Error:', err);
+  } catch (error) {
+    logger.error('Bonus XP Error:', error);
   }
 }
 
-/* ---------- RESET USER ---------- */
-export async function resetUserXp(client, guild, member) {
+export async function removeXp(client, guild, member, amount = 50) {
+  try {
+    const data = await getUserLevelData(client, guild.id, member.id);
+
+    data.xp = Math.max(0, data.xp - amount);
+    data.totalXp = Math.max(0, data.totalXp - amount);
+
+    await saveUserLevelData(client, guild.id, member.id, data);
+  } catch (error) {
+    logger.error('Remove XP Error:', error);
+  }
+}
+
+export async function setXp(client, guild, member, xp = 0) {
+  try {
+    const data = await getUserLevelData(client, guild.id, member.id);
+
+    data.xp = xp;
+
+    await saveUserLevelData(client, guild.id, member.id, data);
+  } catch (error) {
+    logger.error('Set XP Error:', error);
+  }
+}
+
+export async function resetUser(client, guild, member) {
   try {
     const data = {
       xp: 0,
@@ -113,24 +147,53 @@ export async function resetUserXp(client, guild, member) {
     };
 
     await saveUserLevelData(client, guild.id, member.id, data);
-  } catch (err) {
-    logger.error('Reset XP Error:', err);
+  } catch (error) {
+    logger.error('Reset User Error:', error);
   }
 }
 
-/* ---------- GET STATS ---------- */
-export async function getUserStats(client, guild, member) {
+export async function fetchUserStats(client, guild, member) {
   try {
     const data = await getUserLevelData(client, guild.id, member.id);
 
     return {
+      id: member.id,
       level: data.level,
       xp: data.xp,
       totalXp: data.totalXp,
-      messages: data.messages || 0
+      messages: data.messages || 0,
+      lastMessage: data.lastMessage || 0
     };
-  } catch (err) {
-    logger.error('Stats Error:', err);
+  } catch (error) {
+    logger.error('Fetch Stats Error:', error);
     return null;
   }
 }
+
+export async function forceLevelUp(client, guild, member, levels = 1) {
+  try {
+    const data = await getUserLevelData(client, guild.id, member.id);
+
+    for (let i = 0; i < levels; i++) {
+      data.level++;
+      await handleRoleRewards(guild, member, data.level);
+    }
+
+    data.xp = 0;
+
+    await saveUserLevelData(client, guild.id, member.id, data);
+
+    await sendLevelUpMessage(client, guild, member, data, levels);
+  } catch (error) {
+    logger.error('Force Level Error:', error);
+  }
+}
+
+export async function syncRoles(client, guild, member) {
+  try {
+    const data = await getUserLevelData(client, guild.id, member.id);
+    await giveRoles(guild, member, data.level);
+  } catch (error) {
+    logger.error('Sync Roles Error:', error);
+  }
+  }
