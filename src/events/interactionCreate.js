@@ -31,13 +31,12 @@ function getRow(count, isPrivileged) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("gw_join")
-      .setLabel("🎉 Join")
+      .setLabel(`🎉 ${count}`)
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
-      .setCustomId("gw_count")
-      .setLabel(`${count}`)
+      .setCustomId("gw_participants")
+      .setLabel("Participants")
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(true)
   );
 
   if (isPrivileged) {
@@ -63,7 +62,7 @@ function endGiveaway(id, client) {
   const channel = client.channels.cache.get(data.channelId);
   if (!channel) return;
 
-  const pool = [];
+  let pool = [];
 
   for (const [userId, count] of data.entries) {
     for (let i = 0; i < count; i++) {
@@ -71,7 +70,7 @@ function endGiveaway(id, client) {
     }
   }
 
-  if (!pool.length) {
+  if (pool.length === 0) {
     channel.send("❌ No participants.");
     giveaways.delete(id);
     return;
@@ -84,11 +83,24 @@ function endGiveaway(id, client) {
     const pick = pool[Math.floor(Math.random() * pool.length)];
     if (!used.has(pick)) {
       used.add(pick);
-      winners.push(`<@${pick}>`);
+      winners.push(pick);
     }
   }
 
-  channel.send(`🎉 Winners: ${winners.join(", ")}`);
+  const winnerMentions = winners.map(id => `<@${id}>`).join(", ");
+
+  channel.send({
+    embeds: [
+      {
+        color: 0x2b2d31,
+        description:
+          `🎉 **Congratulations!** 🎉\n\n` +
+          `${winnerMentions} won **${data.prize}**\n\n` +
+          `• Hosted by: <@${data.hostId}>`
+      }
+    ]
+  });
+
   giveaways.delete(id);
 }
 
@@ -151,9 +163,7 @@ export default {
           }
 
           let count = 0;
-          for (const v of data.entries.values()) {
-            count += v;
-          }
+          for (const v of data.entries.values()) count += v;
 
           const isPrivileged =
             isHost ||
@@ -166,6 +176,37 @@ export default {
           });
 
           return;
+        }
+
+        if (interaction.customId === "gw_participants") {
+          if (!data) return;
+
+          const list = [];
+
+          for (const [userId, count] of data.entries) {
+            list.push(
+              `• <@${userId}> (${count} ${
+                count > 1 ? "entries" : "entry"
+              })`
+            );
+          }
+
+          return interaction.reply({
+            embeds: [
+              {
+                color: 0x2b2d31,
+                title: "Giveaway Participants",
+                description:
+                  list.length > 0
+                    ? list.join("\n")
+                    : "No participants yet",
+                footer: {
+                  text: `Total Participants: ${data.entries.size}`
+                }
+              }
+            ],
+            flags: MessageFlags.Ephemeral
+          });
         }
 
         if (interaction.customId === "gw_end") {
