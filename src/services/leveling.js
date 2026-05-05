@@ -12,9 +12,19 @@ export const LEVEL_ROLES = {
 
 const cooldowns = new Map();
 
+/* ================= XP SYSTEM ================= */
+
 export function getXpForLevel(level) {
   return 5 * level * level + 50 * level + 50;
 }
+
+export function getProgressBar(current, required, size = 10) {
+  const percent = current / required;
+  const filled = Math.round(size * percent);
+  return '█'.repeat(filled) + '░'.repeat(size - filled);
+}
+
+/* ================= USER DATA ================= */
 
 export async function getUserLevelData(client, guildId, userId) {
   const key = `${guildId}:xp:${userId}`;
@@ -33,45 +43,86 @@ export async function saveUserLevelData(client, guildId, userId, data) {
   await client.db.set(key, data);
 }
 
-export async function addLevels(client, guild, member, levels) {
-  const data = await getUserLevelData(client, guild.id, member.id);
+/* ================= LEVEL MODIFY ================= */
+
+export async function addLevels(client, guildId, userId, levels) {
+  const data = await getUserLevelData(client, guildId, userId);
 
   data.level += levels;
   data.xp = 0;
   data.totalXp += getXpForLevel(data.level);
 
-  await giveRoles(guild, member, data.level);
-  await saveUserLevelData(client, guild.id, member.id, data);
-
+  await saveUserLevelData(client, guildId, userId, data);
   return data;
 }
 
-export async function removeLevels(client, guild, member, levels) {
-  const data = await getUserLevelData(client, guild.id, member.id);
+export async function removeLevels(client, guildId, userId, levels) {
+  const data = await getUserLevelData(client, guildId, userId);
 
   data.level = Math.max(0, data.level - levels);
   data.xp = 0;
   data.totalXp = getXpForLevel(data.level);
 
-  await saveUserLevelData(client, guild.id, member.id, data);
-
+  await saveUserLevelData(client, guildId, userId, data);
   return data;
 }
 
-export async function setLevel(client, guild, member, level) {
-  const data = await getUserLevelData(client, guild.id, member.id);
+export async function setUserLevel(client, guildId, userId, level) {
+  const data = await getUserLevelData(client, guildId, userId);
 
   data.level = level;
   data.xp = 0;
   data.totalXp = getXpForLevel(level);
 
-  await giveRoles(guild, member, level);
-  await saveUserLevelData(client, guild.id, member.id, data);
-
+  await saveUserLevelData(client, guildId, userId, data);
   return data;
 }
 
-export async function giveRoles(guild, member, level) {
+/* ================= XP FROM MESSAGES ================= */
+
+export async function handleMessageXP(client, message) {
+  if (!message.guild || message.author.bot) return;
+
+  const guildId = message.guild.id;
+  const userId = message.author.id;
+
+  const config = await getLevelingConfig(client, guildId);
+  if (!config.enabled) return;
+
+  if (!checkCooldown(guildId, userId, config.xpCooldown)) return;
+
+  const data = await getUserLevelData(client, guildId, userId);
+
+  const xpGain = random(config.xpRange.min, config.xpRange.max);
+  data.xp += xpGain;
+  data.totalXp += xpGain;
+
+  const requiredXp = getXpForLevel(data.level + 1);
+
+  if (data.xp >= requiredXp) {
+    data.level += 1;
+    data.xp = 0;
+
+    await giveRoles(message.member, data.level);
+
+    if (config.announceLevelUp && config.levelUpChannel) {
+      const channel = message.guild.channels.cache.get(config.levelUpChannel);
+      if (channel) {
+        const msg = config.levelUpMessage
+          .replace('{user}', `<@${userId}>`)
+          .replace('{level}', data.level);
+
+        channel.send({ content: msg }).catch(() => {});
+      }
+    }
+  }
+
+  await saveUserLevelData(client, guildId, userId, data);
+}
+
+/* ================= ROLES ================= */
+
+export async function giveRoles(member, level) {
   try {
     const roles = LEVEL_ROLES[level];
     if (!roles) return;
@@ -82,9 +133,11 @@ export async function giveRoles(guild, member, level) {
       }
     }
   } catch (err) {
-    logger.error(err);
+    logger.error('[LEVEL ROLE ERROR]', err);
   }
 }
+
+/* ================= COOLDOWN ================= */
 
 export function checkCooldown(guildId, userId, seconds = 60) {
   const key = `${guildId}-${userId}`;
@@ -98,3 +151,62 @@ export function checkCooldown(guildId, userId, seconds = 60) {
   cooldowns.set(key, now + seconds * 1000);
   return true;
 }
+
+/* ================= CONFIG ================= */
+
+export async function getLevelingConfig(client, guildId) {
+  const key = `${guildId}:config`;
+
+  return (await client.db.get(key)) || {
+    enabled: true,
+    configured: false,
+    announceLevelUp: true,
+    levelUpChannel: null,
+    xpRange: { min: 15, max: 25 },
+    xpCooldown: 60,
+    levelUpMessage: '{user} reached level {level}!'
+  };
+}
+
+export async function saveLevelingConfig(client, guildId, config) {
+  const key = `${guildId}:config`;
+  await client.db.set(key, config);
+}
+
+/* ================= LEADERBOARD ================= */
+
+export async function getLeaderboard(client, guildId, limit = 10) {
+  const all = await client.db.all();
+
+  const users = all
+    .filter(x => x.id.startsWith(`${guildId}:xp:`))
+    .map(x => ({
+      userId: x.id.split(':')[2],
+      ...x.value
+    }));
+
+  return users
+    .sort((a, b) => b.totalXp - a.totalXp)
+    .slice(0, limit);
+}
+
+export async function getUserRank(client, guildId, userId) {
+  const all = await client.db.all();
+
+  const users = all
+    .filter(x => x.id.startsWith(`${guildId}:xp:`))
+    .map(x => ({
+      userId: x.id.split(':')[2],
+      ...x.value
+    }))
+    .sort((a, b) => b.totalXp - a.totalXp);
+
+  const rank = users.findIndex(u => u.userId === userId);
+  return rank === -1 ? null : rank + 1;
+}
+
+/* ================= UTILS ================= */
+
+function random(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
