@@ -156,7 +156,6 @@ import { botHasPermission } from '../../utils/permissionGuard.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { logger } from '../../utils/logger.js';
 
-// ✅ IMPORTANT (your dashboard import)
 import dashboard from './modules/level_dashboard.js';
 
 export default {
