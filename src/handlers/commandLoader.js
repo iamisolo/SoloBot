@@ -223,107 +223,192 @@ const registeredNames = new Set();
                                         }
                                         if (choice.value && choice.value.length > 100) {
                                             validationErrors.push(`Command ${cmd.name} subcommand ${option.name} option ${subOption.name} choice ${choice.name} has value longer than 100 chars: "${choice.value}" (${choice.value.length} chars)`);
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                    });
-                }
-            });
-            
-            if (validationErrors.length > 0) {
-                logger.error('Command validation failed. Errors:');
-                validationErrors.forEach(error => logger.error(`  - ${error}`));
-                throw new Error(`Command validation failed with ${validationErrors.length} errors`);
-            }
-            
-            logger.info('Command validation passed');
-            
-            const guild = await client.guilds.fetch(guildId);
-            
-            const existingCommands = await guild.commands.fetch();
-            logger.info(`Found ${existingCommands.size} existing guild commands`);
-            
-            const MAX_COMMANDS = 100;
-            let commandsToRegister = commands;
-            
-            if (commands.length > MAX_COMMANDS) {
-                logger.warn(`Command count (${commands.length}) exceeds Discord limit (${MAX_COMMANDS}), truncating...`);
-                commandsToRegister = commands.slice(0, MAX_COMMANDS);
-                logger.info(`Truncated to ${commandsToRegister.length} commands for registration`);
-            }
-            
-            if (process.env.NODE_ENV !== 'production') {
-                logger.info(`Registering ${totalCommandsWithSubs} commands for guild ${guild.name} (${guild.id})`);
-            }
-            
-            try {
-                logger.info(`Registering ${commandsToRegister.length} new commands...`);
-                
-                await guild.commands.set(commandsToRegister);
-                
-                logger.info(`Successfully registered ${commandsToRegister.length} guild commands`);
-                
-                const registeredCommands = await guild.commands.fetch();
-                if (registeredCommands.size !== commandsToRegister.length) {
-                    logger.warn(`Warning: Expected ${commandsToRegister.length} commands, but Discord reports ${registeredCommands.size} registered`);
-                } else {
-                    logger.info(`Verification passed: ${registeredCommands.size} commands successfully registered`);
-                }
-                
-            } catch (error) {
-                logger.error('Failed to register commands:', error);
-                
-                if (existingCommands.size > 0) {
-                    logger.info('Attempting to restore previous commands due to registration failure...');
-                    try {
-                        await guild.commands.set(existingCommands.map(cmd => cmd));
-                        logger.info('Successfully restored previous commands');
-                    } catch (restoreError) {
-                        logger.error('Failed to restore previous commands:', restoreError);
-                    }
-                }
-                
-                throw error;
-            }
-        } else {
-            logger.info('Skipping global command registration - bot is guild-only');
+                        import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { Collection } from 'discord.js';
+import { logger } from '../utils/logger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/* ─────────────────────────────────────────────── */
+/* SUBCOMMAND PARSER */
+/* ─────────────────────────────────────────────── */
+
+function getSubcommandInfo(commandData) {
+  const subcommands = [];
+
+  if (commandData.options) {
+    for (const option of commandData.options) {
+      if (option.type === 1) {
+        subcommands.push(option.name);
+      } else if (option.type === 2 && option.options) {
+        for (const subOption of option.options) {
+          if (subOption.type === 1) {
+            subcommands.push(`${option.name}/${subOption.name}`);
+          }
         }
-    } catch (error) {
-        logger.error('Error registering commands:', error);
-        throw error;
+      }
     }
+  }
+
+  return subcommands;
 }
 
+/* ─────────────────────────────────────────────── */
+/* FILE RECURSION */
+/* ─────────────────────────────────────────────── */
 
+async function getAllFiles(directory, fileList = []) {
+  const files = await fs.readdir(directory, { withFileTypes: true });
 
+  for (const file of files) {
+    const filePath = path.join(directory, file.name);
 
+    if (file.isDirectory()) {
+      if (file.name === 'modules') continue;
+      await getAllFiles(filePath, fileList);
+    } else if (file.name.endsWith('.js')) {
+      fileList.push(filePath);
+    }
+  }
 
+  return fileList;
+}
 
+/* ─────────────────────────────────────────────── */
+/* LOAD COMMANDS */
+/* ─────────────────────────────────────────────── */
+
+export async function loadCommands(client) {
+  client.commands = new Collection();
+
+  const commandsPath = path.join(__dirname, '../commands');
+  const commandFiles = await getAllFiles(commandsPath);
+
+  logger.info(`Found ${commandFiles.length} command files`);
+
+  const uniqueCommandNames = new Set();
+
+  for (const filePath of commandFiles) {
+    try {
+      const commandDir = path.dirname(filePath);
+      const category = path.basename(commandDir);
+
+      /* ✅ SAFE IMPORT FOR RAILWAY (FIXED) */
+      const commandModule = await import(
+        pathToFileURL(filePath).href
+      );
+
+      const command = commandModule.default || commandModule;
+
+      if (!command.data || !command.execute) {
+        logger.warn(`Invalid command: ${filePath}`);
+        continue;
+      }
+
+      const commandName = command.data.name;
+
+      if (!uniqueCommandNames.has(commandName)) {
+        uniqueCommandNames.add(commandName);
+
+        command.category = category;
+        command.filePath = filePath;
+
+        client.commands.set(commandName, command);
+      }
+
+      const subcommands = getSubcommandInfo(command.data.toJSON());
+
+      logger.info(
+        `Loaded: ${commandName} (category: ${category})`
+      );
+
+      if (subcommands.length) {
+        logger.info(`  └ subcommands: ${subcommands.join(', ')}`);
+      }
+
+    } catch (error) {
+      logger.error(`Failed loading command: ${filePath}`, error);
+    }
+  }
+
+  logger.info(`Total commands loaded: ${client.commands.size}`);
+  return client.commands;
+}
+
+/* ─────────────────────────────────────────────── */
+/* REGISTER COMMANDS */
+/* ─────────────────────────────────────────────── */
+
+export async function registerCommands(client, guildId) {
+  try {
+    const commands = [];
+    const registeredNames = new Set();
+
+    for (const command of client.commands.values()) {
+      const name = command.data.name;
+
+      if (!registeredNames.has(name)) {
+        registeredNames.add(name);
+        commands.push(command.data.toJSON());
+      }
+    }
+
+    if (guildId) {
+      const guild = await client.guilds.fetch(guildId);
+
+      logger.info(
+        `Registering ${commands.length} commands for guild ${guild.name}`
+      );
+
+      await guild.commands.set(commands);
+
+      logger.info('Commands registered successfully');
+    }
+
+  } catch (error) {
+    logger.error('Command registration error:', error);
+  }
+}
+
+/* ─────────────────────────────────────────────── */
+/* RELOAD SINGLE COMMAND */
+/* ─────────────────────────────────────────────── */
 
 export async function reloadCommand(client, commandName) {
-    const command = client.commands.get(commandName);
-    
-    if (!command) {
-        return { success: false, message: `Command "${commandName}" not found` };
-    }
-    
-    try {
-        const commandPath = path.resolve(command.filePath);
-        const moduleUrl = pathToFileURL(commandPath);
-        moduleUrl.searchParams.set('t', Date.now().toString());
+  const command = client.commands.get(commandName);
 
-        const newCommand = (await import(moduleUrl.href)).default;
-        
-        client.commands.set(commandName, newCommand);
-        
-        logger.info(`Reloaded command: ${commandName}`);
-        return { success: true, message: `Successfully reloaded command "${commandName}"` };
-    } catch (error) {
-        logger.error(`Error reloading command "${commandName}":`, error);
-        return { success: false, message: `Error reloading command: ${error.message}` };
-    }
+  if (!command) {
+    return {
+      success: false,
+      message: `Command "${commandName}" not found`
+    };
+  }
+
+  try {
+    const moduleUrl = pathToFileURL(command.filePath);
+    moduleUrl.searchParams.set('t', Date.now().toString());
+
+    const newCommandModule = await import(moduleUrl.href);
+    const newCommand = newCommandModule.default || newCommandModule;
+
+    client.commands.set(commandName, newCommand);
+
+    logger.info(`Reloaded command: ${commandName}`);
+
+    return {
+      success: true,
+      message: `Reloaded ${commandName}`
+    };
+
+  } catch (error) {
+    logger.error(`Reload error (${commandName})`, error);
+
+    return {
+      success: false,
+      message: error.message
+    };
+  }
 }
-
-
