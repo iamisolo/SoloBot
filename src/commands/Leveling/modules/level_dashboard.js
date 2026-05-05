@@ -94,89 +94,7 @@ async function generateRankCard(user, data) {
     ctx.fillStyle = '#333';
     ctx.fillRect(200, 200, 400, 20);
 
-    ctx.fillStyle = '#00ffcc';
-    ctx.fillRect(200, 200, 400 * progress, 20);
-
-    return new AttachmentBuilder(canvas.toBuffer(), { name: 'rank.png' });
-}
-
-/* -------------------- REFRESH -------------------- */
-
-async function refresh(interaction, cfg, guildId) {
-    await InteractionHelper.safeEditReply(interaction, {
-        embeds: [buildDashboardEmbed(cfg, interaction.guild)],
-        components: [
-            buildButtons(cfg, guildId),
-            new ActionRowBuilder().addComponents(buildMenu(guildId))
-        ]
-    }).catch(() => {});
-}
-
-/* -------------------- COMMAND -------------------- */
-
-export default {
-    data: new SlashCommandBuilder()
-        .setName('levelconfig')
-        .setDescription('Advanced leveling system')
-        .setDMPermission(false),
-
-    async execute(interaction, config, client) {
-        try {
-            const guildId = interaction.guild.id;
-            const cfg = await getLevelingConfig(client, guildId);
-
-            // defaults
-            cfg.enabled ??= true;
-            cfg.announceLevelUp ??= true;
-            cfg.xpCooldown ??= 60;
-            cfg.xpRange ??= { min: 15, max: 25 };
-
-            await InteractionHelper.safeEditReply(interaction, {
-                embeds: [buildDashboardEmbed(cfg, interaction.guild)],
-                components: [
-                    buildButtons(cfg, guildId),
-                    new ActionRowBuilder().addComponents(buildMenu(guildId))
-                ]
-            });
-
-            const channel = interaction.channel;
-            if (!channel) return;
-
-            const collector = channel.createMessageComponentCollector({
-                time: 600000,
-                filter: i => i.user.id === interaction.user.id
-            });
-
-            collector.on('collect', async i => {
-                try {
-                    /* -------- SELECT MENU -------- */
-                    if (i.isStringSelectMenu()) {
-                        const val = i.values[0];
-
-                        /* CHANNEL */
-                        if (val === 'channel') {
-                            await i.deferUpdate();
-
-                            const menu = new ChannelSelectMenuBuilder()
-                                .setCustomId('ch')
-                                .addChannelTypes(ChannelType.GuildText);
-
-                            await i.followUp({
-                                components: [new ActionRowBuilder().addComponents(menu)],
-                                flags: MessageFlags.Ephemeral
-                            });
-
-                            const c = channel.createMessageComponentCollector({
-                                componentType: ComponentType.ChannelSelect,
-                                time: 60000,
-                                max: 1,
-                                filter: x => x.user.id === interaction.user.id
-                            });
-
-                            c.on('collect', async x => {
-                                const ch = x.channels.first();
-                                if (!ch) return;
-
+u
                                 if (!botHasPermission(ch, ['SendMessages'])) {
                                     return x.reply({
                                         embeds: [errorEmbed('Error', 'Bot cannot send messages there')],
@@ -305,17 +223,277 @@ export default {
                         }
 
                         /* RANK CARD */
+import {
+    ActionRowBuilder,
+    StringSelectMenuBuilder,
+    StringSelectMenuOptionBuilder,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ChannelSelectMenuBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ChannelType,
+    MessageFlags,
+    ComponentType,
+    EmbedBuilder
+} from 'discord.js';
+
+import { getColor } from '../../../../config/bot.js';
+import { InteractionHelper } from '../../../../utils/interactionHelper.js';
+import { successEmbed, errorEmbed } from '../../../../utils/embeds.js';
+import { logger } from '../../../../utils/logger.js';
+import { getLevelingConfig, saveLevelingConfig, getUserLevelData } from '../../../../services/leveling.js';
+import { botHasPermission } from '../../../../utils/permissionGuard.js';
+
+function buildDashboardEmbed(cfg, guild) {
+    return new EmbedBuilder()
+        .setTitle('📊 Leveling Dashboard')
+        .setDescription(`Server: **${guild.name}**`)
+        .setColor(getColor('info'))
+        .addFields(
+            { name: 'System', value: cfg.enabled ? 'Enabled' : 'Disabled', inline: true },
+            { name: 'Announcements', value: cfg.announceLevelUp ? 'Enabled' : 'Disabled', inline: true },
+            { name: 'Channel', value: cfg.levelUpChannel ? `<#${cfg.levelUpChannel}>` : 'Not set', inline: true },
+            { name: 'XP Range', value: `${cfg.xpRange.min} - ${cfg.xpRange.max}`, inline: true },
+            { name: 'Cooldown', value: `${cfg.xpCooldown}s`, inline: true },
+            { name: 'Message', value: cfg.levelUpMessage || 'Default', inline: false }
+        )
+        .setTimestamp();
+}
+
+function buildMenu(guildId) {
+    return new StringSelectMenuBuilder()
+        .setCustomId(`menu_${guildId}`)
+        .setPlaceholder('Select option')
+        .addOptions(
+            new StringSelectMenuOptionBuilder().setLabel('Channel').setValue('channel'),
+            new StringSelectMenuOptionBuilder().setLabel('Message').setValue('message'),
+            new StringSelectMenuOptionBuilder().setLabel('XP Range').setValue('xp'),
+            new StringSelectMenuOptionBuilder().setLabel('Cooldown').setValue('cooldown'),
+            new StringSelectMenuOptionBuilder().setLabel('Rank').setValue('rank')
+        );
+}
+
+function buildButtons(cfg, guildId) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`sys_${guildId}`)
+            .setLabel('Toggle System')
+            .setStyle(cfg.enabled ? ButtonStyle.Success : ButtonStyle.Danger),
+        new ButtonBuilder()
+            .setCustomId(`ann_${guildId}`)
+            .setLabel('Toggle Announce')
+            .setStyle(cfg.announceLevelUp ? ButtonStyle.Success : ButtonStyle.Danger)
+    );
+}
+
+async function refresh(interaction, cfg, guildId) {
+    await InteractionHelper.safeEditReply(interaction, {
+        embeds: [buildDashboardEmbed(cfg, interaction.guild)],
+        components: [
+            buildButtons(cfg, guildId),
+            new ActionRowBuilder().addComponents(buildMenu(guildId))
+        ]
+    }).catch(() => {});
+}
+
+export default {
+    async execute(interaction, config, client) {
+        try {
+            const guildId = interaction.guild.id;
+            const cfg = await getLevelingConfig(client, guildId);
+
+            cfg.enabled ??= true;
+            cfg.announceLevelUp ??= true;
+            cfg.xpCooldown ??= 60;
+            cfg.xpRange ??= { min: 15, max: 25 };
+
+            await InteractionHelper.safeEditReply(interaction, {
+                embeds: [buildDashboardEmbed(cfg, interaction.guild)],
+                components: [
+                    buildButtons(cfg, guildId),
+                    new ActionRowBuilder().addComponents(buildMenu(guildId))
+                ]
+            });
+
+            const channel = interaction.channel;
+            if (!channel) return;
+
+            const collector = channel.createMessageComponentCollector({
+                time: 600000,
+                filter: i => i.user.id === interaction.user.id
+            });
+
+            collector.on('collect', async i => {
+                try {
+                    if (i.isStringSelectMenu()) {
+                        const val = i.values[0];
+
+                        if (val === 'channel') {
+                            await i.deferUpdate();
+
+                            const menu = new ChannelSelectMenuBuilder()
+                                .setCustomId('ch')
+                                .addChannelTypes(ChannelType.GuildText);
+
+                            await i.followUp({
+                                components: [new ActionRowBuilder().addComponents(menu)],
+                                flags: MessageFlags.Ephemeral
+                            });
+
+                            const c = channel.createMessageComponentCollector({
+                                componentType: ComponentType.ChannelSelect,
+                                time: 60000,
+                                max: 1,
+                                filter: x => x.user.id === interaction.user.id
+                            });
+
+                            c.on('collect', async x => {
+                                const ch = x.channels.first();
+                                if (!ch) return;
+
+                                if (!botHasPermission(ch, ['SendMessages'])) {
+                                    return x.reply({
+                                        embeds: [errorEmbed('Error', 'Bot cannot send messages there')],
+                                        flags: MessageFlags.Ephemeral
+                                    });
+                                }
+
+                                cfg.levelUpChannel = ch.id;
+                                await saveLevelingConfig(client, guildId, cfg);
+
+                                await x.reply({
+                                    embeds: [successEmbed('Updated', `${ch}`)],
+                                    flags: MessageFlags.Ephemeral
+                                });
+
+                                await refresh(interaction, cfg, guildId);
+                            });
+                        }
+
+                        if (val === 'message') {
+                            const modal = new ModalBuilder()
+                                .setCustomId('msg')
+                                .setTitle('Set Message')
+                                .addComponents(
+                                    new ActionRowBuilder().addComponents(
+                                        new TextInputBuilder()
+                                            .setCustomId('m')
+                                            .setStyle(TextInputStyle.Paragraph)
+                                            .setRequired(true)
+                                    )
+                                );
+
+                            await i.showModal(modal);
+
+                            const sub = await i.awaitModalSubmit({ time: 120000 }).catch(() => null);
+                            if (!sub) return;
+
+                            const txt = sub.fields.getTextInputValue('m');
+                            cfg.levelUpMessage = txt;
+
+                            await saveLevelingConfig(client, guildId, cfg);
+
+                            await sub.reply({
+                                embeds: [successEmbed('Saved', txt)],
+                                flags: MessageFlags.Ephemeral
+                            });
+
+                            await refresh(interaction, cfg, guildId);
+                        }
+
+                        if (val === 'xp') {
+                            const modal = new ModalBuilder()
+                                .setCustomId('xp')
+                                .setTitle('XP Range')
+                                .addComponents(
+                                    new ActionRowBuilder().addComponents(
+                                        new TextInputBuilder().setCustomId('min').setLabel('Min').setStyle(TextInputStyle.Short)
+                                    ),
+                                    new ActionRowBuilder().addComponents(
+                                        new TextInputBuilder().setCustomId('max').setLabel('Max').setStyle(TextInputStyle.Short)
+                                    )
+                                );
+
+                            await i.showModal(modal);
+
+                            const sub = await i.awaitModalSubmit({ time: 120000 }).catch(() => null);
+                            if (!sub) return;
+
+                            const min = parseInt(sub.fields.getTextInputValue('min'));
+                            const max = parseInt(sub.fields.getTextInputValue('max'));
+
+                            if (isNaN(min) || isNaN(max) || min > max) {
+                                return sub.reply({
+                                    embeds: [errorEmbed('Invalid', 'Enter valid numbers')],
+                                    flags: MessageFlags.Ephemeral
+                                });
+                            }
+
+                            cfg.xpRange = { min, max };
+                            await saveLevelingConfig(client, guildId, cfg);
+
+                            await sub.reply({
+                                embeds: [successEmbed('Updated', `${min}-${max}`)],
+                                flags: MessageFlags.Ephemeral
+                            });
+
+                            await refresh(interaction, cfg, guildId);
+                        }
+
+                        if (val === 'cooldown') {
+                            const modal = new ModalBuilder()
+                                .setCustomId('cd')
+                                .setTitle('Cooldown')
+                                .addComponents(
+                                    new ActionRowBuilder().addComponents(
+                                        new TextInputBuilder().setCustomId('c').setStyle(TextInputStyle.Short)
+                                    )
+                                );
+
+                            await i.showModal(modal);
+
+                            const sub = await i.awaitModalSubmit({ time: 120000 }).catch(() => null);
+                            if (!sub) return;
+
+                            const cd = parseInt(sub.fields.getTextInputValue('c'));
+
+                            if (isNaN(cd)) {
+                                return sub.reply({
+                                    embeds: [errorEmbed('Invalid', 'Enter number')],
+                                    flags: MessageFlags.Ephemeral
+                                });
+                            }
+
+                            cfg.xpCooldown = cd;
+                            await saveLevelingConfig(client, guildId, cfg);
+
+                            await sub.reply({
+                                embeds: [successEmbed('Updated', `${cd}s`)],
+                                flags: MessageFlags.Ephemeral
+                            });
+
+                            await refresh(interaction, cfg, guildId);
+                        }
+
                         if (val === 'rank') {
                             await i.deferReply({ flags: MessageFlags.Ephemeral });
 
                             const data = await getUserLevelData(client, guildId, i.user.id);
-                            const card = await generateRankCard(i.user, data);
 
-                            await i.editReply({ files: [card] });
+                            const embed = new EmbedBuilder()
+                                .setTitle(`${i.user.username} Rank`)
+                                .setColor(getColor('info'))
+                                .addFields(
+                                    { name: 'Level', value: `${data?.level ?? 0}`, inline: true },
+                                    { name: 'XP', value: `${data?.xp ?? 0}`, inline: true }
+                                );
+
+                            await i.editReply({ embeds: [embed] });
                         }
                     }
 
-                    /* -------- BUTTONS -------- */
                     if (i.isButton()) {
                         await i.deferUpdate();
 
@@ -338,7 +516,6 @@ export default {
 
         } catch (err) {
             logger.error(err);
-            throw new TitanBotError('Failed', ErrorTypes.UNKNOWN);
         }
     }
 };
