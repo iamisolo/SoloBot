@@ -3,97 +3,170 @@
 
 
 
-import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } from 'discord.js';
+import {
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+  EmbedBuilder,
+  MessageFlags
+} from 'discord.js';
+
 import { logger } from '../../utils/logger.js';
-import { handleInteractionError, TitanBotError, ErrorTypes } from '../../utils/errorHandler.js';
+import {
+  handleInteractionError,
+  TitanBotError,
+  ErrorTypes
+} from '../../utils/errorHandler.js';
+
 import { checkUserPermissions } from '../../utils/permissionGuard.js';
-import { addLevels, getLevelingConfig } from '../../services/leveling.js';
-import { createEmbed } from '../../utils/embeds.js';
+
+import {
+  addLevels,
+  getUserLevelData,
+  getLevelingConfig,
+  getXpForLevel
+} from '../../services/leveling.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+
 export default {
   data: new SlashCommandBuilder()
     .setName('leveladd')
     .setDescription('Add levels to a user')
-    .addUserOption((option) =>
+    .addUserOption(option =>
       option
         .setName('user')
-        .setDescription('The user to add levels to')
+        .setDescription('User to modify')
         .setRequired(true)
     )
-    .addIntegerOption((option) =>
+    .addIntegerOption(option =>
       option
         .setName('levels')
-        .setDescription('Number of levels to add')
+        .setDescription('Levels to add')
         .setRequired(true)
         .setMinValue(1)
+        .setMaxValue(500)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false),
+
   category: 'Leveling',
-
-  
-
-
-
-
 
   async execute(interaction, config, client) {
     try {
+      const start = Date.now();
       await InteractionHelper.safeDefer(interaction);
 
-      
       const hasPermission = await checkUserPermissions(
         interaction,
         PermissionFlagsBits.ManageGuild,
-        'You need ManageGuild permission to use this command.'
+        'You need Manage Server permission to use this command.'
       );
       if (!hasPermission) return;
 
-      const levelingConfig = await getLevelingConfig(client, interaction.guildId);
+      const levelingConfig = await getLevelingConfig(
+        client,
+        interaction.guildId
+      );
+
       if (!levelingConfig?.enabled) {
-        await InteractionHelper.safeEditReply(interaction, {
+        return InteractionHelper.safeEditReply(interaction, {
           embeds: [
             new EmbedBuilder()
               .setColor('#f1c40f')
-              .setDescription('The leveling system is currently disabled on this server.')
+              .setDescription('Leveling system is disabled.')
           ],
           flags: MessageFlags.Ephemeral
         });
-        return;
       }
 
       const targetUser = interaction.options.getUser('user');
       const levelsToAdd = interaction.options.getInteger('levels');
 
-      
-      const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+      const member = await interaction.guild.members
+        .fetch(targetUser.id)
+        .catch(() => null);
+
       if (!member) {
         throw new TitanBotError(
-          `User ${targetUser.id} not found in this guild`,
+          `User ${targetUser.id} not found`,
           ErrorTypes.USER_INPUT,
-          'The specified user is not in this server.'
+          'User is not in this server.'
         );
       }
 
-      
-      const userData = await addLevels(client, interaction.guildId, targetUser.id, levelsToAdd);
+      const beforeData = await getUserLevelData(
+        client,
+        interaction.guildId,
+        targetUser.id
+      );
+
+      const oldLevel = beforeData?.level ?? 0;
+
+      const updatedData = await addLevels(
+        client,
+        interaction.guildId,
+        targetUser.id,
+        levelsToAdd
+      );
+
+      const newLevel = updatedData.level;
+      const xpNeeded = getXpForLevel(newLevel + 1);
+
+      const embed = new EmbedBuilder()
+        .setAuthor({
+          name: 'SoloBot Level Manager',
+          iconURL: interaction.client.user.displayAvatarURL()
+        })
+        .setTitle('⬆️ Levels Added')
+        .addFields(
+          {
+            name: '👤 User',
+            value: `${targetUser.tag}`,
+            inline: true
+          },
+          {
+            name: '📊 Old Level',
+            value: `${oldLevel}`,
+            inline: true
+          },
+          {
+            name: '📈 Added',
+            value: `${levelsToAdd}`,
+            inline: true
+          },
+          {
+            name: '🚀 New Level',
+            value: `${newLevel}`,
+            inline: true
+          },
+          {
+            name: '⭐ Total XP',
+            value: `${updatedData.totalXp}`,
+            inline: true
+          },
+          {
+            name: '🎯 Next Level XP',
+            value: `${xpNeeded}`,
+            inline: true
+          }
+        )
+        .setColor('#2ecc71')
+        .setFooter({
+          text: `Action by ${interaction.user.tag}`
+        })
+        .setTimestamp();
 
       await InteractionHelper.safeEditReply(interaction, {
-        embeds: [
-          createEmbed({
-            title: '✅ Levels Added',
-            description: `Successfully added ${levelsToAdd} levels to ${targetUser.tag}.\n**New Level:** ${userData.level}`,
-            color: 'success'
-          })
-        ]
+        embeds: [embed]
       });
 
       logger.info(
-        `[ADMIN] User ${interaction.user.tag} added ${levelsToAdd} levels to ${targetUser.tag} in guild ${interaction.guildId}`
+        `[SOLOBOT] ${interaction.user.tag} added ${levelsToAdd} levels to ${targetUser.tag} (${oldLevel} → ${newLevel}) | ${Date.now() - start}ms`
       );
+
     } catch (error) {
-      logger.error('LevelAdd command error:', error);
+      logger.error('[SOLOBOT] LevelAdd Error:', error);
+
       await handleInteractionError(interaction, error, {
         type: 'command',
         commandName: 'leveladd'
@@ -101,5 +174,3 @@ export default {
     }
   }
 };
-
-
