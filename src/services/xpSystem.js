@@ -3,7 +3,7 @@ import {
   getUserLevelData,
   saveUserLevelData,
   getXpForLevel,
-  giveRoles,
+  updateRoles,
   checkCooldown
 } from '../services/leveling.js';
 
@@ -42,34 +42,34 @@ export async function addXp(client, guild, member) {
       leveledUp = true;
       levelsGained++;
 
-      await handleRoleRewards(guild, member, data.level);
+      await handleRoleRewards(member, data.level);
     }
 
     await saveUserLevelData(client, guild.id, member.id, data);
 
     if (leveledUp) {
-      await sendLevelUpMessage(client, guild, member, data, levelsGained);
+      await sendLevelUpMessage(guild, member, data, levelsGained);
     }
   } catch (error) {
     logger.error('XP Add Error:', error);
   }
 }
 
-async function handleRoleRewards(guild, member, level) {
+async function handleRoleRewards(member, level) {
   try {
-    await giveRoles(guild, member, level);
+    await updateRoles(member, level);
   } catch (error) {
     logger.error('Role Reward Error:', error);
   }
 }
 
-async function sendLevelUpMessage(client, guild, member, data, levelsGained) {
+async function sendLevelUpMessage(guild, member, data, levelsGained) {
   try {
     const channel = resolveChannel(guild);
     if (!channel) return;
 
     const message = buildLevelMessage(member, data.level, levelsGained);
-    await channel.send(message).catch(() => {});
+    await channel.send({ content: message }).catch(() => {});
   } catch (error) {
     logger.error('Level Message Error:', error);
   }
@@ -176,14 +176,14 @@ export async function forceLevelUp(client, guild, member, levels = 1) {
 
     for (let i = 0; i < levels; i++) {
       data.level++;
-      await handleRoleRewards(guild, member, data.level);
+      await handleRoleRewards(member, data.level);
     }
 
     data.xp = 0;
 
     await saveUserLevelData(client, guild.id, member.id, data);
 
-    await sendLevelUpMessage(client, guild, member, data, levels);
+    await sendLevelUpMessage(guild, member, data, levels);
   } catch (error) {
     logger.error('Force Level Error:', error);
   }
@@ -192,8 +192,8 @@ export async function forceLevelUp(client, guild, member, levels = 1) {
 export async function syncRoles(client, guild, member) {
   try {
     const data = await getUserLevelData(client, guild.id, member.id);
-    await giveRoles(guild, member, data.level);
+    await updateRoles(member, data.level);
   } catch (error) {
     logger.error('Sync Roles Error:', error);
   }
-  }
+}
