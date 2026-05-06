@@ -15,11 +15,11 @@ import {
 } from 'discord.js';
 
 import { getColor } from '../../../config/bot.js';
-import { InteractionHelper } from '../../../../utils/interactionHelper.js';
-import { successEmbed, errorEmbed } from '../../../../utils/embeds.js';
-import { logger } from '../../../../utils/logger.js';
-import { getLevelingConfig, saveLevelingConfig, getUserLevelData } from '../../../../services/leveling.js';
-import { botHasPermission } from '../../../../utils/permissionGuard.js';
+import { InteractionHelper } from '../../../utils/interactionHelper.js';
+import { successEmbed, errorEmbed } from '../../../utils/embeds.js';
+import { logger } from '../../../utils/logger.js';
+import { getLevelingConfig, saveLevelingConfig, getUserLevelData } from '../../../services/leveling.js';
+import { botHasPermission } from '../../../utils/permissionGuard.js';
 
 /* ---------- UI ---------- */
 
