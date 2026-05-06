@@ -16,17 +16,15 @@ const cooldowns = new Map();
 
 /* ================= XP SYSTEM ================= */
 
-// MAIN XP FUNCTION
 export function getXpForLevel(level) {
   return Math.floor(5 * level * level + 50 * level + 50);
 }
 
-// ✅ FIX (for your commands)
+// FIX FOR COMMANDS (IMPORTANT)
 export function getXPNeeded(level) {
   return getXpForLevel(level);
 }
 
-// Progress bar
 export function getProgressBar(current, required, size = 10) {
   const percent = required > 0 ? current / required : 0;
   const filled = Math.round(size * percent);
@@ -119,11 +117,11 @@ export async function handleMessageXP(client, message) {
     await saveUserLevelData(client, guildId, userId, data);
 
   } catch (err) {
-    logger.error('[XP SYSTEM ERROR]', err);
+    logger.error('[XP ERROR]', err);
   }
 }
 
-/* ================= LEVEL UP HANDLER ================= */
+/* ================= LEVEL UP ================= */
 
 async function handleLevelUp(message, level, config) {
   await updateRoles(message.member, level);
@@ -146,7 +144,6 @@ export async function updateRoles(member, level) {
   try {
     if (!member) return;
 
-    // Remove all leveling roles first
     const allRoles = Object.values(LEVEL_ROLES).flat();
 
     for (const roleId of allRoles) {
@@ -155,23 +152,21 @@ export async function updateRoles(member, level) {
       }
     }
 
-    // Add highest eligible role
-    const eligibleLevels = Object.keys(LEVEL_ROLES)
+    const eligible = Object.keys(LEVEL_ROLES)
       .map(Number)
       .filter(lvl => lvl <= level)
       .sort((a, b) => b - a);
 
-    if (eligibleLevels.length === 0) return;
+    if (!eligible.length) return;
 
-    const highest = eligibleLevels[0];
-    const rolesToAdd = LEVEL_ROLES[highest];
+    const roles = LEVEL_ROLES[eligible[0]];
 
-    for (const roleId of rolesToAdd) {
+    for (const roleId of roles) {
       await member.roles.add(roleId).catch(() => {});
     }
 
   } catch (err) {
-    logger.error('[ROLE SYSTEM ERROR]', err);
+    logger.error('[ROLE ERROR]', err);
   }
 }
 
@@ -211,18 +206,25 @@ export async function saveLevelingConfig(client, guildId, config) {
   await client.db.set(key, config);
 }
 
-/* ================= LEADERBOARD ================= */
+/* ================= LEADERBOARD (FIXED) ================= */
 
 export async function getLeaderboard(client, guildId, limit = 10) {
-  const all = await client.db.all();
+  if (!client.db?.keys) return [];
 
-  return all
-    .filter(x => x.id.startsWith(`${guildId}:xp:`))
-    .map(x => ({
-      userId: x.id.split(':')[2],
-      ...x.value
-    }))
-    .sort((a, b) => b.totalXp - a.totalXp)
+  const keys = await client.db.keys(`${guildId}:xp:*`);
+  const users = [];
+
+  for (const key of keys) {
+    const data = await client.db.get(key);
+
+    users.push({
+      userId: key.split(':')[2],
+      ...data
+    });
+  }
+
+  return users
+    .sort((a, b) => (b.totalXp || 0) - (a.totalXp || 0))
     .slice(0, limit);
 }
 
