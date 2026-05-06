@@ -1,8 +1,3 @@
-
-
-
-
-
 import {
   SlashCommandBuilder,
   EmbedBuilder,
@@ -19,7 +14,7 @@ import {
 import {
   getLeaderboard,
   getLevelingConfig,
-  getXpForLevel
+  getXPNeeded
 } from '../../services/leveling.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -54,11 +49,7 @@ export default {
         });
       }
 
-      const leaderboard = await getLeaderboard(
-        client,
-        interaction.guildId,
-        10
-      );
+      const leaderboard = getLeaderboard(interaction.guildId);
 
       if (!leaderboard.length) {
         throw new TitanBotError(
@@ -86,7 +77,7 @@ export default {
           ? `<@${member.id}>`
           : `<@${user.userId}>`;
 
-        const nextXp = getXpForLevel(user.level + 1);
+        const nextXp = getXPNeeded(user.level);
 
         lines.push(
           `${prefix} ${mention}\n` +
@@ -112,7 +103,7 @@ export default {
       });
 
       logger.info(
-        `[SOLOBOT] Leaderboard viewed in ${interaction.guildId} | ${Date.now() - start}ms`
+        `[SOLOBOT] Leaderboard used in ${interaction.guildId} | ${Date.now() - start}ms`
       );
 
     } catch (error) {
