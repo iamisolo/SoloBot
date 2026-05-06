@@ -14,7 +14,7 @@ import {
     EmbedBuilder
 } from 'discord.js';
 
-import { getColor } from '../../../../config/bot.js';
+import { getColor } from '../../../config/bot.js';
 import { InteractionHelper } from '../../../../utils/interactionHelper.js';
 import { successEmbed, errorEmbed } from '../../../../utils/embeds.js';
 import { logger } from '../../../../utils/logger.js';
