@@ -17,7 +17,7 @@ import {
 
 import {
   getUserLevelData,
-  getXpForLevel
+  getXPNeeded
 } from '../../services/leveling.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -66,7 +66,8 @@ export default {
       const xp = data?.xp ?? 0;
       const totalXp = data?.totalXp ?? 0;
 
-      const xpNeeded = getXpForLevel(level + 1);
+      // ✅ FIXED
+      const xpNeeded = getXPNeeded(level);
       const progress =
         xpNeeded > 0 ? Math.floor((xp / xpNeeded) * 100) : 0;
 
@@ -120,11 +121,11 @@ export default {
       });
 
       logger.debug(
-        `Rank checked → ${targetUser.id} | ${Date.now() - start}ms`
+        `[SOLOBOT] Rank checked → ${targetUser.id} | ${Date.now() - start}ms`
       );
 
     } catch (error) {
-      logger.error('Rank Command Error:', error);
+      logger.error('[SOLOBOT] Rank Command Error:', error);
 
       await handleInteractionError(interaction, error, {
         type: 'command',
@@ -142,6 +143,8 @@ function buildProgressBar(percent, size = 10) {
 
 async function getRankPosition(client, guildId, userId) {
   try {
+    if (!client.db) return null; // ✅ prevent crash
+
     const keys = await client.db.keys(`${guildId}:xp:*`);
     const users = [];
 
@@ -162,7 +165,7 @@ async function getRankPosition(client, guildId, userId) {
     return index === -1 ? null : index + 1;
 
   } catch (error) {
-    logger.error('Rank Position Error:', error);
+    logger.error('[SOLOBOT] Rank Position Error:', error);
     return null;
   }
 }
