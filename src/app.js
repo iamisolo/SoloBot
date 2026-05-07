@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import { Client, Collection, GatewayIntentBits } from 'discord.js';
-import { REST } from '@discordjs/rest';
 import express from 'express';
 import cron from 'node-cron';
 
@@ -10,8 +9,6 @@ import { logger, startupLog, shutdownLog } from './utils/logger.js';
 import { checkBirthdays } from './services/birthdayService.js';
 import { checkGiveaways } from './services/giveawayService.js';
 import { loadCommands, registerCommands as registerSlashCommands } from './handlers/commandLoader.js';
-
-/* ✅ XP SYSTEM */
 import { addXp } from './services/xpSystem.js';
 
 class SoloBot extends Client {
@@ -31,43 +28,72 @@ class SoloBot extends Client {
     this.config = config;
     this.commands = new Collection();
     this.db = null;
-    this.rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
   }
 
   async start() {
     try {
       startupLog('Starting SoloBot...');
 
-      /* DB */
       const dbInstance = await initializeDatabase();
       this.db = dbInstance.db;
 
-      /* WEB SERVER */
       this.startWebServer();
 
-      /* COMMANDS */
       await loadCommands(this);
 
-      /* LOGIN FIRST */
       await this.login(process.env.TOKEN);
 
-      /* 🔥 XP SYSTEM EVENT */
+      console.log(`Logged in as ${this.user.tag}`);
+
+      this.on('interactionCreate', async (interaction) => {
+        try {
+          if (interaction.isChatInputCommand()) {
+            const command = this.commands.get(interaction.commandName);
+
+            if (!command) return;
+
+            await command.execute(interaction, this);
+          }
+
+          if (interaction.isButton()) {
+            if (interaction.customId === "gw_join") {
+              const { giveaways } = await import('./commands/giveaway/giveaway.js');
+
+              const data = giveaways.get(interaction.message.id);
+              if (!data) {
+                return interaction.reply({ content: "Giveaway not found", ephemeral: true });
+              }
+
+              if (!data.entries.includes(interaction.user.id)) {
+                data.entries.push(interaction.user.id);
+              }
+
+              return interaction.reply({ content: "You joined the giveaway", ephemeral: true });
+            }
+          }
+
+        } catch (err) {
+          console.error(err);
+
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: "Error executing command", ephemeral: true });
+          }
+        }
+      });
+
       this.on('messageCreate', async (message) => {
         try {
           if (!message.guild || message.author.bot) return;
-
           await addXp(this, message.guild, message.member);
         } catch (err) {
           logger.error('XP Error:', err);
         }
       });
 
-      /* SLASH COMMANDS */
       await this.registerCommands();
 
-      startupLog('SoloBot ONLINE ✅');
+      startupLog('SoloBot ONLINE');
 
-      /* CRON JOBS */
       this.setupCronJobs();
 
     } catch (error) {
@@ -76,27 +102,22 @@ class SoloBot extends Client {
     }
   }
 
-  /* 🌐 WEB SERVER */
   startWebServer() {
     const app = express();
     const port = process.env.PORT || 3000;
 
     app.get('/', (req, res) => {
-      res.json({ status: 'SoloBot Online ✅' });
+      res.json({ status: 'SoloBot Online' });
     });
 
-    app.listen(port, () => {
-      startupLog(`Web server running on port ${port}`);
-    });
+    app.listen(port);
   }
 
-  /* ⏰ CRON JOBS */
   setupCronJobs() {
     cron.schedule('0 6 * * *', () => checkBirthdays(this));
     cron.schedule('* * * * *', () => checkGiveaways(this));
   }
 
-  /* 📌 REGISTER COMMANDS */
   async registerCommands() {
     try {
       await registerSlashCommands(this, config.bot.guildId);
@@ -105,7 +126,6 @@ class SoloBot extends Client {
     }
   }
 
-  /* 🛑 SHUTDOWN */
   async shutdown(reason = 'UNKNOWN') {
     shutdownLog(`Shutting down (${reason})...`);
 
@@ -119,7 +139,6 @@ class SoloBot extends Client {
   }
 }
 
-/* 🚀 START BOT */
 const bot = new SoloBot();
 
 process.on('SIGINT', () => bot.shutdown('SIGINT'));
