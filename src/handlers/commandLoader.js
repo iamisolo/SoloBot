@@ -2,14 +2,11 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { Collection } from 'discord.js';
-import { logger } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/* ───────────────────────────── */
-/* SUBCOMMAND PARSER */
-/* ───────────────────────────── */
+/* ================= SUBCOMMAND PARSER ================= */
 
 function getSubcommandInfo(commandData) {
   const subcommands = [];
@@ -31,9 +28,7 @@ function getSubcommandInfo(commandData) {
   return subcommands;
 }
 
-/* ───────────────────────────── */
-/* FILE RECURSION */
-/* ───────────────────────────── */
+/* ================= GET ALL FILES ================= */
 
 async function getAllFiles(directory, fileList = []) {
   const files = await fs.readdir(directory, { withFileTypes: true });
@@ -42,9 +37,9 @@ async function getAllFiles(directory, fileList = []) {
     const filePath = path.join(directory, file.name);
 
     if (file.isDirectory()) {
-      if (file.name === 'modules') continue;
+      if (file.name.startsWith('_')) continue; // skip private folders
       await getAllFiles(filePath, fileList);
-    } else if (file.name.endsWith('.js')) {
+    } else if (file.name.endsWith('.js') && !file.name.startsWith('_')) {
       fileList.push(filePath);
     }
   }
@@ -52,67 +47,74 @@ async function getAllFiles(directory, fileList = []) {
   return fileList;
 }
 
-/* ───────────────────────────── */
-/* LOAD COMMANDS */
-/* ───────────────────────────── */
+/* ================= LOAD COMMANDS ================= */
 
 export async function loadCommands(client) {
+  console.log("📂 Starting command loader...");
+
   client.commands = new Collection();
 
-  const commandsPath = path.join(__dirname, '../commands');
-  const commandFiles = await getAllFiles(commandsPath);
+  try {
+    const commandsPath = path.join(__dirname, '../commands');
+    const commandFiles = await getAllFiles(commandsPath);
 
-  logger.info(`Found ${commandFiles.length} command files`);
+    console.log(`📁 Found ${commandFiles.length} command files`);
 
-  const uniqueCommandNames = new Set();
+    const uniqueNames = new Set();
 
-  for (const filePath of commandFiles) {
-    try {
-      const commandDir = path.dirname(filePath);
-      const category = path.basename(commandDir);
+    for (const filePath of commandFiles) {
+      try {
+        const commandDir = path.dirname(filePath);
+        const category = path.basename(commandDir);
 
-      /* ✅ SAFE RAILWAY IMPORT */
-      const commandModule = await import(
-        pathToFileURL(filePath).href
-      );
+        const moduleUrl = pathToFileURL(filePath).href;
+        const commandModule = await import(moduleUrl);
 
-      const command = commandModule.default || commandModule;
+        const command = commandModule?.default;
 
-      if (!command.data || !command.execute) {
-        logger.warn(`Invalid command: ${filePath}`);
-        continue;
+        if (!command || !command.data || !command.execute) {
+          console.log(`⚠️ Invalid command skipped: ${filePath}`);
+          continue;
+        }
+
+        const name = command.data.name;
+
+        if (!uniqueNames.has(name)) {
+          uniqueNames.add(name);
+
+          command.category = category;
+          command.filePath = filePath;
+
+          client.commands.set(name, command);
+        }
+
+        console.log(`✔ Loaded: ${name} (${category})`);
+
+        let subs = [];
+        if (typeof command.data.toJSON === "function") {
+          subs = getSubcommandInfo(command.data.toJSON());
+        }
+
+        if (subs.length) {
+          console.log(`   ↳ Subcommands: ${subs.join(', ')}`);
+        }
+
+      } catch (err) {
+        console.error(`❌ Error loading file: ${filePath}`);
+        console.error(err);
       }
-
-      const name = command.data.name;
-
-      if (!uniqueCommandNames.has(name)) {
-        uniqueCommandNames.add(name);
-
-        command.category = category;
-        command.filePath = filePath;
-
-        client.commands.set(name, command);
-      }
-
-      logger.info(`Loaded command: ${name} (${category})`);
-
-      const subs = getSubcommandInfo(command.data.toJSON());
-      if (subs.length) {
-        logger.info(`  └ subcommands: ${subs.join(', ')}`);
-      }
-
-    } catch (err) {
-      logger.error(`Failed loading ${filePath}`, err);
     }
-  }
 
-  logger.info(`Total commands loaded: ${client.commands.size}`);
-  return client.commands;
+    console.log(`✅ Total commands loaded: ${client.commands.size}`);
+    return client.commands;
+
+  } catch (err) {
+    console.error("❌ Command loader crashed:");
+    console.error(err);
+  }
 }
 
-/* ───────────────────────────── */
-/* REGISTER COMMANDS */
-/* ───────────────────────────── */
+/* ================= REGISTER COMMANDS ================= */
 
 export async function registerCommands(client, guildId) {
   try {
@@ -128,47 +130,52 @@ export async function registerCommands(client, guildId) {
       }
     }
 
+    console.log(`🚀 Registering ${commands.length} commands...`);
+
     if (guildId) {
       const guild = await client.guilds.fetch(guildId);
-
-      logger.info(`Registering ${commands.length} commands`);
-
       await guild.commands.set(commands);
-
-      logger.info('Commands registered successfully');
+      console.log("✅ Commands registered to guild");
+    } else {
+      await client.application.commands.set(commands);
+      console.log("✅ Commands registered globally");
     }
 
   } catch (err) {
-    logger.error('Register error:', err);
+    console.error("❌ Register error:");
+    console.error(err);
   }
 }
 
-/* ───────────────────────────── */
-/* RELOAD COMMAND */
-/* ───────────────────────────── */
+/* ================= RELOAD COMMAND ================= */
 
 export async function reloadCommand(client, commandName) {
   const command = client.commands.get(commandName);
 
   if (!command) {
-    return { success: false, message: 'Command not found' };
+    return { success: false, message: "Command not found" };
   }
 
   try {
     const moduleUrl = pathToFileURL(command.filePath);
-    moduleUrl.searchParams.set('t', Date.now().toString());
+    moduleUrl.searchParams.set('update', Date.now().toString());
 
-    const updated = await import(moduleUrl.href);
-    const newCommand = updated.default || updated;
+    const updatedModule = await import(moduleUrl.href);
+    const newCommand = updatedModule?.default;
+
+    if (!newCommand || !newCommand.data || !newCommand.execute) {
+      return { success: false, message: "Invalid updated command" };
+    }
 
     client.commands.set(commandName, newCommand);
 
-    logger.info(`Reloaded command: ${commandName}`);
+    console.log(`🔄 Reloaded command: ${commandName}`);
 
     return { success: true };
 
   } catch (err) {
-    logger.error(`Reload failed: ${commandName}`, err);
+    console.error(`❌ Reload failed: ${commandName}`);
+    console.error(err);
 
     return {
       success: false,
