@@ -27,8 +27,6 @@ const GIVEAWAY_STAFF_ROLE_IDS = [
 const VERIFIED_ROLE_ID = "1485246026913808384";
 const SELF_ROLE_ID = "1485120899949531198";
 
-/* ================= GIVEAWAY BUTTONS ================= */
-
 function getRow(count, isPrivileged) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -59,15 +57,11 @@ function getRow(count, isPrivileged) {
   return row;
 }
 
-/* ================= END GIVEAWAY ================= */
-
 function endGiveaway(id, client) {
   const data = giveaways.get(id);
-
   if (!data) return;
 
   const channel = client.channels.cache.get(data.channelId);
-
   if (!channel) return;
 
   let pool = [];
@@ -118,8 +112,6 @@ function endGiveaway(id, client) {
   giveaways.delete(id);
 }
 
-/* ================= MAIN ================= */
-
 export default {
   name: Events.InteractionCreate,
 
@@ -129,8 +121,6 @@ export default {
 
       const { guild, user, member } = interaction;
 
-      /* ================= SLASH COMMANDS ================= */
-
       if (interaction.isChatInputCommand()) {
 
         const command =
@@ -139,25 +129,17 @@ export default {
         if (!command) return;
 
         try {
-
           await command.execute(interaction, client);
-
         } catch (error) {
 
           console.error(error);
 
-          if (
-            interaction.replied ||
-            interaction.deferred
-          ) {
-
+          if (interaction.replied || interaction.deferred) {
             await interaction.followUp({
               content: "❌ Error executing command",
               flags: MessageFlags.Ephemeral
             }).catch(() => {});
-
           } else {
-
             await interaction.reply({
               content: "❌ Error executing command",
               flags: MessageFlags.Ephemeral
@@ -168,14 +150,10 @@ export default {
         return;
       }
 
-      /* ================= BUTTONS ================= */
-
       if (interaction.isButton()) {
 
         const data =
           giveaways.get(interaction.message.id);
-
-        /* ================= JOIN GIVEAWAY ================= */
 
         if (interaction.customId === "gw_join") {
 
@@ -211,18 +189,28 @@ export default {
             });
           }
 
+          const userLevel =
+            client.xp?.get(user.id)?.level || 0;
+
+          if (
+            data.requiredLevel &&
+            userLevel < data.requiredLevel
+          ) {
+            return interaction.reply({
+              content: `❌ You need level ${data.requiredLevel} to join`,
+              flags: MessageFlags.Ephemeral
+            });
+          }
+
           await interaction.deferUpdate();
 
           if (data.entries.has(user.id)) {
-
             data.entries.delete(user.id);
-
           } else {
 
             let entries = 1;
 
             for (const roleId in BONUS_ROLES) {
-
               if (member.roles.cache.has(roleId)) {
                 entries += BONUS_ROLES[roleId];
               }
@@ -252,19 +240,13 @@ export default {
           return;
         }
 
-        /* ================= PARTICIPANTS ================= */
-
-        if (
-          interaction.customId ===
-          "gw_participants"
-        ) {
+        if (interaction.customId === "gw_participants") {
 
           if (!data) return;
 
           const list = [];
 
           for (const [userId, count] of data.entries) {
-
             list.push(
               `• <@${userId}> (${count} ${
                 count > 1 ? "entries" : "entry"
@@ -281,7 +263,6 @@ export default {
                   list.length > 0
                     ? list.join("\n")
                     : "No participants yet",
-
                 footer: {
                   text:
                     `Total Participants: ` +
@@ -292,8 +273,6 @@ export default {
             flags: MessageFlags.Ephemeral
           });
         }
-
-        /* ================= END ================= */
 
         if (interaction.customId === "gw_end") {
 
@@ -326,8 +305,6 @@ export default {
           });
         }
 
-        /* ================= REROLL ================= */
-
         if (interaction.customId === "gw_reroll") {
 
           if (!data) return;
@@ -359,12 +336,7 @@ export default {
           });
         }
 
-        /* ================= CREATE TICKET ================= */
-
-        if (
-          interaction.customId ===
-          "ticket_create"
-        ) {
+        if (interaction.customId === "ticket_create") {
 
           await interaction.deferReply({
             flags: MessageFlags.Ephemeral
@@ -375,10 +347,8 @@ export default {
               VERIFIED_ROLE_ID
             )
           ) {
-
             return interaction.editReply({
-              content:
-                "❌ You must be verified"
+              content: "❌ You must be verified"
             });
           }
 
@@ -388,7 +358,6 @@ export default {
             );
 
           if (existing) {
-
             return interaction.editReply({
               content:
                 "❌ You already have a ticket"
@@ -406,44 +375,29 @@ export default {
             await guild.channels.create({
               name: `ticket-${user.id}`,
               type: ChannelType.GuildText,
-
               parent: category?.id || null,
-
               permissionOverwrites: [
                 {
                   id: guild.id,
                   deny: ["ViewChannel"]
                 },
-
                 {
                   id: user.id,
-                  allow: [
-                    "ViewChannel",
-                    "SendMessages"
-                  ]
+                  allow: ["ViewChannel", "SendMessages"]
                 },
-
                 {
                   id: VERIFIED_ROLE_ID,
-                  allow: [
-                    "ViewChannel",
-                    "SendMessages"
-                  ]
+                  allow: ["ViewChannel", "SendMessages"]
                 },
-
                 ...STAFF_ROLE_IDS.map(id => ({
                   id,
-                  allow: [
-                    "ViewChannel",
-                    "SendMessages"
-                  ]
+                  allow: ["ViewChannel", "SendMessages"]
                 }))
               ]
             });
 
           const row =
             new ActionRowBuilder().addComponents(
-
               new ButtonBuilder()
                 .setCustomId("close_ticket")
                 .setLabel("Close")
@@ -451,24 +405,16 @@ export default {
             );
 
           await channel.send({
-            content:
-              `🎫 Ticket for ${user}`,
-
+            content: `🎫 Ticket for ${user}`,
             components: [row]
           });
 
           return interaction.editReply({
-            content:
-              `✅ Ticket created: ${channel}`
+            content: `✅ Ticket created: ${channel}`
           });
         }
 
-        /* ================= CLOSE TICKET ================= */
-
-        if (
-          interaction.customId ===
-          "close_ticket"
-        ) {
+        if (interaction.customId === "close_ticket") {
 
           await interaction.reply({
             content: "Closing ticket...",
@@ -476,18 +422,12 @@ export default {
           });
 
           setTimeout(() => {
-
-            interaction.channel
-              .delete()
-              .catch(() => {});
-
+            interaction.channel.delete().catch(() => {});
           }, 2000);
 
           return;
         }
       }
-
-      /* ================= REACTION ROLES ================= */
 
       if (interaction.isStringSelectMenu()) {
 
@@ -505,9 +445,7 @@ export default {
           );
 
         for (const roleId of all) {
-
           if (!selected.includes(roleId)) {
-
             await interaction.member.roles
               .remove(roleId)
               .catch(() => {});
@@ -515,20 +453,16 @@ export default {
         }
 
         for (const roleId of selected) {
-
           await interaction.member.roles
             .add(roleId)
             .catch(() => {});
         }
 
         if (selected.length > 0) {
-
           await interaction.member.roles
             .add(SELF_ROLE_ID)
             .catch(() => {});
-
         } else {
-
           await interaction.member.roles
             .remove(SELF_ROLE_ID)
             .catch(() => {});
@@ -541,11 +475,7 @@ export default {
       }
 
     } catch (error) {
-
-      console.error(
-        "Interaction Error:",
-        error
-      );
+      console.error("Interaction Error:", error);
     }
   }
 };
