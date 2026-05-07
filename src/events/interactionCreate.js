@@ -299,7 +299,7 @@ export default {
 
         /* ===== CREATE TICKET ===== */
 
-        if (interaction.customId === "ticket_create") {
+        if (interaction.customId === "create_ticket") {
           await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
           if (!member.roles.cache.has(VERIFIED_ROLE_ID)) {
