@@ -7,7 +7,7 @@ import {
   ButtonStyle
 } from "discord.js";
 
-import { giveaways, BONUS_ROLES } from "../commands/Giveaway/gwcreate.js";
+import { giveaways, BONUS_ROLES } from "../commands/Giveaway/giveaway.js";
 
 const STAFF_ROLE_IDS = [
   "1483819172403347548",
