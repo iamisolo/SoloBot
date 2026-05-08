@@ -1,6 +1,7 @@
 import {
   Events,
   ChannelType,
+  PermissionsBitField,
   MessageFlags,
   ActionRowBuilder,
   ButtonBuilder,
@@ -35,7 +36,6 @@ function getRow(count, isPrivileged) {
       .setCustomId("gw_join")
       .setLabel(`🎉 ${count}`)
       .setStyle(ButtonStyle.Primary),
-
     new ButtonBuilder()
       .setCustomId("gw_participants")
       .setLabel("Participants")
@@ -48,7 +48,6 @@ function getRow(count, isPrivileged) {
         .setCustomId("gw_end")
         .setLabel("End")
         .setStyle(ButtonStyle.Danger),
-
       new ButtonBuilder()
         .setCustomId("gw_reroll")
         .setLabel("Reroll")
@@ -71,12 +70,10 @@ function endGiveaway(id, client) {
   let pool = [];
 
   for (const [userId, count] of data.entries) {
-    for (let i = 0; i < count; i++) {
-      pool.push(userId);
-    }
+    for (let i = 0; i < count; i++) pool.push(userId);
   }
 
-  if (pool.length === 0) {
+  if (!pool.length) {
     channel.send("❌ No participants.");
     giveaways.delete(id);
     return;
@@ -87,21 +84,18 @@ function endGiveaway(id, client) {
 
   while (winners.length < data.winners && used.size < pool.length) {
     const pick = pool[Math.floor(Math.random() * pool.length)];
-
     if (!used.has(pick)) {
       used.add(pick);
       winners.push(pick);
     }
   }
 
-  const winnerMentions = winners.map(id => `<@${id}>`).join(", ");
-
   channel.send({
     embeds: [{
       color: 0x2b2d31,
       description:
         `🎉 **Congratulations!** 🎉\n\n` +
-        `${winnerMentions} won **${data.prize}**\n\n` +
+        `${winners.map(x => `<@${x}>`).join(", ")} won **${data.prize}**\n\n` +
         `👑 Hosted by: <@${data.hostId}>`
     }]
   });
@@ -118,41 +112,112 @@ export default {
     try {
       const { guild, user, member } = interaction;
 
-      /* ================= SLASH COMMANDS ================= */
+      /* ===== SLASH ===== */
 
       if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
 
-        try {
-          await command.execute(interaction, client);
-        } catch (error) {
-          console.error(error);
-
-          if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({
-              content: "❌ Error executing command",
-              flags: MessageFlags.Ephemeral
-            }).catch(() => {});
-          } else {
-            await interaction.reply({
-              content: "❌ Error executing command",
-              flags: MessageFlags.Ephemeral
-            }).catch(() => {});
-          }
-        }
-
+        await command.execute(interaction, client);
         return;
       }
 
-      /* ================= BUTTONS ================= */
+      /* ===== BUTTONS ===== */
 
       if (interaction.isButton()) {
+        const { customId } = interaction;
         const data = giveaways.get(interaction.message.id);
 
-        /* ===== JOIN ===== */
+        /* ===== CREATE TICKET ===== */
 
-        if (interaction.customId === "gw_join") {
+        if (customId === "create_ticket") {
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+          if (!member.roles.cache.has(VERIFIED_ROLE_ID)) {
+            return interaction.editReply({ content: "❌ You must be verified" });
+          }
+
+          const existing = guild.channels.cache.find(
+            c => c.name === `ticket-${user.id}`
+          );
+
+          if (existing) {
+            return interaction.editReply({
+              content: `❌ You already have a ticket: ${existing}`
+            });
+          }
+
+          const channel = await guild.channels.create({
+            name: `ticket-${user.id}`,
+            type: ChannelType.GuildText,
+            permissionOverwrites: [
+              {
+                id: guild.id,
+                deny: [
+                  PermissionsBitField.Flags.ViewChannel,
+                  PermissionsBitField.Flags.SendMessages
+                ]
+              },
+              {
+                id: VERIFIED_ROLE_ID,
+                allow: [
+                  PermissionsBitField.Flags.ViewChannel,
+                  PermissionsBitField.Flags.SendMessages,
+                  PermissionsBitField.Flags.ReadMessageHistory
+                ]
+              },
+              {
+                id: user.id,
+                allow: [
+                  PermissionsBitField.Flags.ViewChannel,
+                  PermissionsBitField.Flags.ReadMessageHistory
+                ]
+              },
+              ...STAFF_ROLE_IDS.map(id => ({
+                id,
+                allow: [
+                  PermissionsBitField.Flags.ViewChannel,
+                  PermissionsBitField.Flags.ReadMessageHistory
+                ]
+              }))
+            ]
+          });
+
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId("close_ticket")
+              .setLabel("Close")
+              .setStyle(ButtonStyle.Danger)
+          );
+
+          await channel.send({
+            content: `🎫 Ticket opened by ${user}`,
+            components: [row]
+          });
+
+          return interaction.editReply({
+            content: `✅ Ticket created: ${channel}`
+          });
+        }
+
+        /* ===== CLOSE TICKET ===== */
+
+        if (customId === "close_ticket") {
+          await interaction.reply({
+            content: "Closing ticket...",
+            flags: MessageFlags.Ephemeral
+          });
+
+          setTimeout(() => {
+            interaction.channel.delete().catch(() => {});
+          }, 2000);
+
+          return;
+        }
+
+        /* ===== GIVEAWAY JOIN ===== */
+
+        if (customId === "gw_join") {
           if (!data) {
             return interaction.reply({
               content: "❌ Giveaway not found",
@@ -160,35 +225,16 @@ export default {
             });
           }
 
-          const isHost = user.id === data.hostId;
-          const isStaff = member.roles.cache.some(r =>
-            GIVEAWAY_STAFF_ROLE_IDS.includes(r.id)
-          );
+          if (!member.roles.cache.has(VERIFIED_ROLE_ID)) {
+            return interaction.reply({
+              content: "❌ Only verified users can join",
+              flags: MessageFlags.Ephemeral
+            });
+          }
 
-          if (isHost) {
+          if (user.id === data.hostId) {
             return interaction.reply({
               content: "❌ Host cannot join",
-              flags: MessageFlags.Ephemeral
-            });
-          }
-
-          if (!member.roles.cache.has(VERIFIED_ROLE_ID) && !isStaff) {
-            return interaction.reply({
-              content: "❌ You must be verified",
-              flags: MessageFlags.Ephemeral
-            });
-          }
-
-          /* SAFE LEVEL CHECK */
-          let userLevel = 0;
-
-          if (client.xp && typeof client.xp.get === "function") {
-            userLevel = client.xp.get(user.id)?.level || 0;
-          }
-
-          if (data.requiredLevel && userLevel < data.requiredLevel) {
-            return interaction.reply({
-              content: `❌ You need level ${data.requiredLevel} to join`,
               flags: MessageFlags.Ephemeral
             });
           }
@@ -210,10 +256,10 @@ export default {
           }
 
           let count = 0;
-          for (const value of data.entries.values()) count += value;
+          for (const val of data.entries.values()) count += val;
 
           const isPrivileged =
-            isHost ||
+            user.id === data.hostId ||
             member.roles.cache.some(r =>
               GIVEAWAY_STAFF_ROLE_IDS.includes(r.id)
             );
@@ -227,21 +273,20 @@ export default {
 
         /* ===== PARTICIPANTS ===== */
 
-        if (interaction.customId === "gw_participants") {
+        if (customId === "gw_participants") {
           if (!data) return;
 
           const list = [];
 
-          for (const [userId, count] of data.entries) {
-            list.push(`• <@${userId}> (${count} ${count > 1 ? "entries" : "entry"})`);
+          for (const [id, count] of data.entries) {
+            list.push(`• <@${id}> (${count})`);
           }
 
           return interaction.reply({
             embeds: [{
               color: 0x2b2d31,
-              title: "Giveaway Participants",
-              description: list.length ? list.join("\n") : "No participants yet",
-              footer: { text: `Total Participants: ${data.entries.size}` }
+              title: "Participants",
+              description: list.length ? list.join("\n") : "None"
             }],
             flags: MessageFlags.Ephemeral
           });
@@ -249,7 +294,7 @@ export default {
 
         /* ===== END ===== */
 
-        if (interaction.customId === "gw_end") {
+        if (customId === "gw_end") {
           if (!data) return;
 
           const isHost = user.id === data.hostId;
@@ -259,7 +304,7 @@ export default {
 
           if (!isHost && !isStaff) {
             return interaction.reply({
-              content: "❌ Only host or staff can end",
+              content: "❌ No permission",
               flags: MessageFlags.Ephemeral
             });
           }
@@ -267,110 +312,26 @@ export default {
           endGiveaway(interaction.message.id, client);
 
           return interaction.reply({
-            content: "🛑 Giveaway Ended",
+            content: "🛑 Ended",
             flags: MessageFlags.Ephemeral
           });
         }
 
         /* ===== REROLL ===== */
 
-        if (interaction.customId === "gw_reroll") {
+        if (customId === "gw_reroll") {
           if (!data) return;
-
-          const isHost = user.id === data.hostId;
-          const isStaff = member.roles.cache.some(r =>
-            GIVEAWAY_STAFF_ROLE_IDS.includes(r.id)
-          );
-
-          if (!isHost && !isStaff) {
-            return interaction.reply({
-              content: "❌ Only host or staff can reroll",
-              flags: MessageFlags.Ephemeral
-            });
-          }
 
           endGiveaway(interaction.message.id, client);
 
           return interaction.reply({
-            content: "🔁 Giveaway Rerolled",
+            content: "🔁 Rerolled",
             flags: MessageFlags.Ephemeral
           });
-        }
-
-        /* ===== CREATE TICKET ===== */
-
-        if (interaction.customId === "create_ticket") {
-          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-          if (!member.roles.cache.has(VERIFIED_ROLE_ID)) {
-            return interaction.editReply({
-              content: "❌ You must be verified"
-            });
-          }
-
-          const existing = guild.channels.cache.find(
-            c => c.name === `ticket-${user.id}`
-          );
-
-          if (existing) {
-            return interaction.editReply({
-              content: "❌ You already have a ticket"
-            });
-          }
-
-          const category = guild.channels.cache.find(
-            c => c.type === ChannelType.GuildCategory
-          );
-
-          const channel = await guild.channels.create({
-            name: `ticket-${user.id}`,
-            type: ChannelType.GuildText,
-            parent: category?.id || null,
-            permissionOverwrites: [
-              { id: guild.id, deny: ["ViewChannel"] },
-              { id: user.id, allow: ["ViewChannel", "SendMessages"] },
-              { id: VERIFIED_ROLE_ID, allow: ["ViewChannel", "SendMessages"] },
-              ...STAFF_ROLE_IDS.map(id => ({
-                id,
-                allow: ["ViewChannel", "SendMessages"]
-              }))
-            ]
-          });
-
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId("close_ticket")
-              .setLabel("Close")
-              .setStyle(ButtonStyle.Danger)
-          );
-
-          await channel.send({
-            content: `🎫 Ticket for ${user}`,
-            components: [row]
-          });
-
-          return interaction.editReply({
-            content: `✅ Ticket created: ${channel}`
-          });
-        }
-
-        /* ===== CLOSE TICKET ===== */
-
-        if (interaction.customId === "close_ticket") {
-          await interaction.reply({
-            content: "Closing ticket...",
-            flags: MessageFlags.Ephemeral
-          });
-
-          setTimeout(() => {
-            interaction.channel.delete().catch(() => {});
-          }, 2000);
-
-          return;
         }
       }
 
-      /* ================= SELECT MENU ================= */
+      /* ===== SELECT MENU ===== */
 
       if (interaction.isStringSelectMenu()) {
         if (interaction.customId !== "reaction_roles") return;
@@ -400,8 +361,15 @@ export default {
         });
       }
 
-    } catch (error) {
-      console.error("Interaction Error:", error);
+    } catch (err) {
+      console.error("Interaction Error:", err);
+
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: "Unexpected error",
+          flags: MessageFlags.Ephemeral
+        }).catch(() => {});
+      }
     }
   }
 };
