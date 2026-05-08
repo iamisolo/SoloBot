@@ -14,6 +14,7 @@ export default {
 
     const guildId = message.guild.id;
     const userId = message.author.id;
+    const prefix = "s!";
 
     /* =======================
        🎯 LEVELING SYSTEM
@@ -22,7 +23,11 @@ export default {
     try {
       const cfg = await getLevelingConfig(client, guildId);
 
-      if (cfg?.enabled && message.content.length > 2) {
+      if (
+        cfg?.enabled &&
+        message.content.length > 5 &&
+        !message.content.startsWith(prefix)
+      ) {
         let data = await getUserLevel(client, guildId, userId);
 
         const now = Date.now();
@@ -65,8 +70,6 @@ export default {
        ⚡ PREFIX COMMAND SYSTEM
     ======================= */
 
-    const prefix = "s!";
-
     if (!message.content.startsWith(prefix)) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
@@ -74,13 +77,16 @@ export default {
 
     if (!commandName) return;
 
-    const command = client.commands.get(commandName);
+    const command =
+      client.commands.get(commandName) ||
+      client.commands.find(cmd => cmd.aliases?.includes(commandName));
+
     if (!command) return;
 
     try {
-      if (typeof command.executePrefix === "function") {
+      if (command.executePrefix) {
         await command.executePrefix(message, args, client);
-      } else if (typeof command.execute === "function") {
+      } else if (command.execute && !command.data) {
         await command.execute(message, args, client);
       }
     } catch (error) {
