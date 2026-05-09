@@ -56,30 +56,61 @@ class SoloBot extends Client {
           }
 
           if (interaction.isButton()) {
-            if (interaction.customId === "gw_join") {
-              const { giveaways } = await import('./commands/giveaway/giveaway.js');
 
-              const data = giveaways.get(interaction.message.id);
-              if (!data) {
-                return interaction.reply({ content: "Giveaway not found", ephemeral: true });
-              }
+  // GIVEAWAY JOIN
+  if (interaction.customId === "gw_join") {
+    const { giveaways } = await import('./commands/giveaway/giveaway.js');
 
-              if (!data.entries.includes(interaction.user.id)) {
-                data.entries.push(interaction.user.id);
-              }
+    const data = giveaways.get(interaction.message.id);
+    if (!data) {
+      return interaction.reply({ content: "Giveaway not found", ephemeral: true });
+    }
 
-              return interaction.reply({ content: "You joined the giveaway", ephemeral: true });
-            }
-          }
+    if (!data.entries.includes(interaction.user.id)) {
+      data.entries.push(interaction.user.id);
+    }
 
-        } catch (err) {
-          console.error(err);
+    return interaction.reply({ content: "You joined the giveaway", ephemeral: true });
+  }
 
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "Error executing command", ephemeral: true });
-          }
+  // CREATE TICKET
+  if (interaction.customId === "create_ticket") {
+    await interaction.deferReply({ ephemeral: true });
+
+    const existing = interaction.guild.channels.cache.find(
+      c => c.name === `ticket-${interaction.user.id}`
+    );
+
+    if (existing) {
+      return interaction.editReply({ content: `You already have a ticket: ${existing}` });
+    }
+
+    const channel = await interaction.guild.channels.create({
+      name: `ticket-${interaction.user.id}`,
+      type: 0,
+      permissionOverwrites: [
+        {
+          id: interaction.guild.id,
+          deny: ["ViewChannel"]
+        },
+        {
+          id: interaction.user.id,
+          allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"]
         }
-      });
+      ]
+    });
+
+    await channel.send(`Welcome ${interaction.user} support will be here soon`);
+
+    return interaction.editReply({ content: `Ticket created: ${channel}` });
+  }
+
+  // CLOSE TICKET
+  if (interaction.customId === "close_ticket") {
+    await interaction.reply({ content: "Closing ticket...", ephemeral: true });
+    setTimeout(() => interaction.channel.delete().catch(() => {}), 2000);
+  }
+}
 
       this.on('messageCreate', async (message) => {
         try {
