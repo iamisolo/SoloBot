@@ -1,25 +1,31 @@
 import {
   ActionRowBuilder,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  EmbedBuilder
 } from "discord.js";
 
 export default {
   name: "ticketpanel",
 
   async executePrefix(message) {
+    const embed = new EmbedBuilder()
+      .setTitle("🎫 Support Center")
+      .setDescription("Select a category below to open a ticket.\nStaff will assist you shortly.")
+      .setColor(0x5865F2);
+
     const menu = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId("ticket_select")
-        .setPlaceholder("Select ticket type")
+        .setPlaceholder("Choose ticket type")
         .addOptions([
-          { label: "Support", value: "support" },
-          { label: "Report", value: "report" },
-          { label: "Claim", value: "claim" }
+          { label: "Support", value: "support", emoji: "🛠️" },
+          { label: "Report", value: "report", emoji: "🚨" },
+          { label: "Claim", value: "claim", emoji: "📦" }
         ])
     );
 
     await message.channel.send({
-      content: "Ticket Panel - Select a category",
+      embeds: [embed],
       components: [menu]
     });
   }
