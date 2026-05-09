@@ -18,7 +18,7 @@ import { loadCommands, registerCommands as registerSlashCommands } from './handl
 import { addXp } from './services/xpSystem.js';
 
 // ===== SIMPLE DB (JSON) =====
-const FILE = './data/giveaways.json';
+const FILE = './src/commands/giveaway/giveaways.js';
 if (!fs.existsSync('./data')) fs.mkdirSync('./data');
 if (!fs.existsSync(FILE)) fs.writeFileSync(FILE, '[]');
 
@@ -210,34 +210,105 @@ class SoloBot extends Client {
       res.json({ status: 'SoloBot Online' });
     });
 
-    app.listen(port);
+import 'dotenv/config';
+import {
+  Client,
+  Collection,
+  GatewayIntentBits
+} from 'discord.js';
+
+import fs from 'fs';
+import express from 'express';
+import cron from 'node-cron';
+
+import config from './config/application.js';
+import { initializeDatabase } from './utils/database.js';
+import { logger } from './utils/logger.js';
+import { loadCommands, registerCommands } from './handlers/commandLoader.js';
+
+// ✅ LOAD INTERACTION HANDLER
+import './events/interactionCreate.js';
+
+// ===== GIVEAWAY FILE SETUP =====
+const FILE = './data/giveaways.json';
+if (!fs.existsSync('./data')) fs.mkdirSync('./data');
+if (!fs.existsSync(FILE)) fs.writeFileSync(FILE, '[]');
+
+export const giveaways = new Map();
+
+// ===== BOT CLASS =====
+class Bot extends Client {
+  constructor() {
+    super({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.MessageContent
+      ]
+    });
+
+    this.commands = new Collection();
   }
 
-  async registerCommands() {
+  async start() {
     try {
-      await registerSlashCommands(this, config.bot.guildId);
-    } catch (error) {
-      logger.error('Command error:', error);
+      // ✅ DATABASE
+      await initializeDatabase();
+
+      // ✅ LOAD COMMANDS
+      await loadCommands(this);
+
+      // ✅ READY EVENT (FIXED)
+      this.once("ready", () => {
+        console.log("=================================");
+        console.log(`🤖 Logged in as ${this.user.tag}`);
+        console.log(`📊 Servers: ${this.guilds.cache.size}`);
+        console.log("=================================");
+      });
+
+      // ✅ LOGIN
+      await this.login(process.env.TOKEN);
+
+      // ✅ REGISTER COMMANDS
+      await registerCommands(this, config.bot.guildId);
+
+      // ✅ START SERVICES
+      this.startServer();
+      this.startCron();
+
+    } catch (err) {
+      logger.error(err);
     }
   }
 
-  async shutdown(reason = 'UNKNOWN') {
-    shutdownLog(`Shutting down (${reason})...`);
-    try {
-      if (this.isReady()) this.destroy();
-      process.exit(0);
-    } catch (error) {
-      logger.error('Shutdown error:', error);
-      process.exit(1);
-    }
+  // ===== WEB SERVER =====
+  startServer() {
+    const app = express();
+
+    app.get('/', (req, res) => {
+      res.json({
+        status: "ONLINE",
+        bot: this.user?.tag || "Starting..."
+      });
+    });
+
+    const port = process.env.PORT || 3000;
+    app.listen(port, () => {
+      console.log(`🌐 Web server running on port ${port}`);
+    });
+  }
+
+  // ===== CRON JOBS =====
+  startCron() {
+    cron.schedule('* * * * *', () => {
+      console.log("⏱ Checking giveaways...");
+    });
   }
 }
 
-const bot = new SoloBot();
-
-process.on('SIGINT', () => bot.shutdown('SIGINT'));
-process.on('SIGTERM', () => bot.shutdown('SIGTERM'));
-
+// ===== START BOT =====
+const bot = new Bot();
 bot.start();
 
-export default SoloBot;
+export default bot;
