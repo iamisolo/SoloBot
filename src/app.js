@@ -18,7 +18,7 @@ import { loadCommands, registerCommands as registerSlashCommands } from './handl
 import { addXp } from './services/xpSystem.js';
 
 // ===== SIMPLE DB (JSON) =====
-const FILE = './src/commands/giveaway/giveaways.js';
+const FILE = './src/commands/giveaway/giveaways.json';
 if (!fs.existsSync('./data')) fs.mkdirSync('./data');
 if (!fs.existsSync(FILE)) fs.writeFileSync(FILE, '[]');
 
