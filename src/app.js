@@ -17,7 +17,7 @@ import { logger } from './utils/logger.js';
 import { loadCommands, registerCommands } from './handlers/commandLoader.js';
 
 // ✅ load interaction handler
-import './events/interactionCreate.js';
+import interactionHandler from './events/interactionCreate.js';
 
 // ===== GIVEAWAY FILE PATH =====
 const FILE = path.join(process.cwd(), 'src', 'commands', 'giveaway', 'giveaways.json');
