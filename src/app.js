@@ -67,10 +67,12 @@ class Bot extends Client {
       });
 
       // login
-      await this.login(process.env.TOKEN);
+await this.login(process.env.TOKEN);
 
-      // register slash commands
-      await registerCommands(this, config.bot.guildId);
+interactionHandler(this);
+
+// register slash commands
+await registerCommands(this, config.bot.guildId);
 
       // start systems
       this.startServer();
