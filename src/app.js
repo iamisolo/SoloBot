@@ -144,4 +144,3 @@ const bot = new Bot();
 bot.start();
 
 export default bot;
-export default bot;
