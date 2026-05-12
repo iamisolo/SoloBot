@@ -8,6 +8,8 @@ import {
   ButtonStyle
 } from "discord.js";
 
+import { createTranscript } from "discord-html-transcripts";
+
 import { giveaways, BONUS_ROLES } from "../commands/Giveaway/giveaway.js";
 
 /* ================= CONFIG ================= */
