@@ -238,17 +238,53 @@ export default (client) => {
         /* ================= CLOSE ================= */
 
         if (customId === "close_ticket") {
-          await interaction.reply({
-            content: "❌ Closing ticket...",
-            flags: MessageFlags.Ephemeral
-          });
+  const channel = interaction.channel;
 
-          setTimeout(() => {
-            interaction.channel.delete().catch(() => {});
-          }, 3000);
+  await interaction.reply({
+    content: "🔒 Closing ticket & saving transcript...",
+    flags: MessageFlags.Ephemeral
+  });
 
-          return;
-        }
+  // 🎯 CREATE TRANSCRIPT
+  const transcript = await createTranscript(channel, {
+    limit: -1,
+    returnType: "attachment",
+    filename: `transcript-${channel.name}.html`
+  });
+
+  // 📂 SEND TO LOG CHANNEL
+  const LOG_CHANNEL_ID = "1503799606474182686";
+  const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+
+  if (logChannel) {
+    await logChannel.send({
+      content: `📄 Transcript for ${channel.name}`,
+      files: [transcript]
+    });
+  }
+
+  // 🔒 HIDE USER (ticket creator)
+  const ticketOwnerId = channel.name.split("-")[1];
+
+  await channel.permissionOverwrites.edit(ticketOwnerId, {
+    ViewChannel: false
+  });
+
+  // 🗑 STAFF DELETE BUTTON
+  const deleteRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("delete_ticket")
+      .setLabel("Delete Ticket")
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  await channel.send({
+    content: "🔒 Ticket closed. Staff can review and delete.",
+    components: [deleteRow]
+  });
+
+  return;
+}
 
         /* ================= GIVEAWAY JOIN ================= */
 
