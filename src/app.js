@@ -67,7 +67,7 @@ class Bot extends Client {
       });
 
       // login
-await this.login(process.env.TOKEN);
+await this.login(process.env.DISCORD_TOKEN);
 
 interactionHandler(this);
 
