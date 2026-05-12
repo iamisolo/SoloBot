@@ -16,11 +16,11 @@ import { initializeDatabase } from './utils/database.js';
 import { logger } from './utils/logger.js';
 import { loadCommands, registerCommands } from './handlers/commandLoader.js';
 
-// ✅ load interaction handler
+// ✅ interaction handler
 import interactionHandler from './events/interactionCreate.js';
 
-// ===== GIVEAWAY FILE PATH =====
-const FILE = path.join(process.cwd(), 'src', 'commands', 'giveaway', 'giveaways.json');
+// ===== GIVEAWAY FILE PATH (FIXED CASE) =====
+const FILE = path.join(process.cwd(), 'src', 'commands', 'Giveaway', 'giveaways.json');
 
 // ensure folder exists
 if (!fs.existsSync(path.dirname(FILE))) {
@@ -52,13 +52,14 @@ class Bot extends Client {
 
   async start() {
     try {
-      // DB init
       await initializeDatabase();
+
+      // ✅ LOAD INTERACTIONS FIRST
+      interactionHandler(this);
 
       // load commands
       await loadCommands(this);
 
-      // READY EVENT (so bot name always shows)
       this.once('ready', () => {
         console.log('==============================');
         console.log(`🤖 Logged in as ${this.user.tag}`);
@@ -67,14 +68,12 @@ class Bot extends Client {
       });
 
       // login
-await this.login(process.env.DISCORD_TOKEN);
+      await this.login(process.env.DISCORD_TOKEN);
 
-interactionHandler(this);
+      // register slash commands
+      await registerCommands(this, config.bot.guildId);
 
-// register slash commands
-await registerCommands(this, config.bot.guildId);
-
-      // start systems
+      // systems
       this.startServer();
       this.startCron();
 
@@ -140,8 +139,9 @@ await registerCommands(this, config.bot.guildId);
   }
 }
 
-// ===== START BOT =====
+// ===== START =====
 const bot = new Bot();
 bot.start();
 
+export default bot;
 export default bot;
