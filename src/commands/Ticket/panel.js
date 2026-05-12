@@ -23,7 +23,7 @@ export default {
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('ticket_create')
+        .setCustomId('create_ticket')
         .setLabel('Create Ticket')
         .setStyle(ButtonStyle.Primary)
     );
