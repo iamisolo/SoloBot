@@ -10,6 +10,10 @@ import {
 
 import { giveaways, BONUS_ROLES } from "../commands/Giveaway/giveaway.js";
 
+/* ================= CONFIG ================= */
+
+const CATEGORY_ID = "1496885067149213908";
+
 const STAFF_ROLE_IDS = [
   "1483819172403347548",
   "1483818875958067210",
@@ -28,7 +32,7 @@ const GIVEAWAY_STAFF_ROLE_IDS = [
 const VERIFIED_ROLE_ID = "1485246026913808384";
 const SELF_ROLE_ID = "1485120899949531198";
 
-/* ================= GIVEAWAY UI ================= */
+/* ================= GIVEAWAY BUTTON UI ================= */
 
 function getRow(count, isPrivileged) {
   const row = new ActionRowBuilder().addComponents(
@@ -36,6 +40,7 @@ function getRow(count, isPrivileged) {
       .setCustomId("gw_join")
       .setLabel(`🎉 ${count}`)
       .setStyle(ButtonStyle.Primary),
+
     new ButtonBuilder()
       .setCustomId("gw_participants")
       .setLabel("Participants")
@@ -48,6 +53,7 @@ function getRow(count, isPrivileged) {
         .setCustomId("gw_end")
         .setLabel("End")
         .setStyle(ButtonStyle.Danger),
+
       new ButtonBuilder()
         .setCustomId("gw_reroll")
         .setLabel("Reroll")
@@ -70,7 +76,9 @@ function endGiveaway(id, client) {
   let pool = [];
 
   for (const [userId, count] of data.entries) {
-    for (let i = 0; i < count; i++) pool.push(userId);
+    for (let i = 0; i < count; i++) {
+      pool.push(userId);
+    }
   }
 
   if (!pool.length) {
@@ -110,7 +118,7 @@ export default (client) => {
     try {
       const { guild, user, member } = interaction;
 
-      /* ===== SLASH ===== */
+      /* ===== SLASH COMMANDS ===== */
 
       if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
@@ -126,13 +134,15 @@ export default (client) => {
         const { customId } = interaction;
         const data = giveaways.get(interaction.message.id);
 
-        /* ===== CREATE TICKET ===== */
+        /* ================= CREATE TICKET ================= */
 
         if (customId === "create_ticket") {
           await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
           if (!member.roles.cache.has(VERIFIED_ROLE_ID)) {
-            return interaction.editReply({ content: "❌ You must be verified" });
+            return interaction.editReply({
+              content: "❌ You must be verified to open a ticket"
+            });
           }
 
           const existing = guild.channels.cache.find(
@@ -148,16 +158,15 @@ export default (client) => {
           const channel = await guild.channels.create({
             name: `ticket-${user.id}`,
             type: ChannelType.GuildText,
+            parent: CATEGORY_ID,
+
             permissionOverwrites: [
               {
                 id: guild.id,
-                deny: [
-                  PermissionsBitField.Flags.ViewChannel,
-                  PermissionsBitField.Flags.SendMessages
-                ]
+                deny: [PermissionsBitField.Flags.ViewChannel]
               },
               {
-                id: VERIFIED_ROLE_ID,
+                id: user.id,
                 allow: [
                   PermissionsBitField.Flags.ViewChannel,
                   PermissionsBitField.Flags.SendMessages,
@@ -165,16 +174,17 @@ export default (client) => {
                 ]
               },
               {
-                id: user.id,
+                id: VERIFIED_ROLE_ID,
                 allow: [
                   PermissionsBitField.Flags.ViewChannel,
-                  PermissionsBitField.Flags.ReadMessageHistory
+                  PermissionsBitField.Flags.SendMessages
                 ]
               },
               ...STAFF_ROLE_IDS.map(id => ({
                 id,
                 allow: [
                   PermissionsBitField.Flags.ViewChannel,
+                  PermissionsBitField.Flags.SendMessages,
                   PermissionsBitField.Flags.ReadMessageHistory
                 ]
               }))
@@ -182,6 +192,11 @@ export default (client) => {
           });
 
           const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId("claim_ticket")
+              .setLabel("Claim")
+              .setStyle(ButtonStyle.Secondary),
+
             new ButtonBuilder()
               .setCustomId("close_ticket")
               .setLabel("Close")
@@ -198,22 +213,42 @@ export default (client) => {
           });
         }
 
-        /* ===== CLOSE TICKET ===== */
+        /* ================= CLAIM ================= */
+
+        if (customId === "claim_ticket") {
+          const isStaff = member.roles.cache.some(r =>
+            STAFF_ROLE_IDS.includes(r.id)
+          );
+
+          if (!isStaff) {
+            return interaction.reply({
+              content: "❌ Only staff can claim tickets",
+              flags: MessageFlags.Ephemeral
+            });
+          }
+
+          return interaction.update({
+            content: `👨‍💼 Claimed by ${user}`,
+            components: interaction.message.components
+          });
+        }
+
+        /* ================= CLOSE ================= */
 
         if (customId === "close_ticket") {
           await interaction.reply({
-            content: "Closing ticket...",
+            content: "❌ Closing ticket...",
             flags: MessageFlags.Ephemeral
           });
 
           setTimeout(() => {
             interaction.channel.delete().catch(() => {});
-          }, 2000);
+          }, 3000);
 
           return;
         }
 
-        /* ===== GIVEAWAY JOIN ===== */
+        /* ================= GIVEAWAY JOIN ================= */
 
         if (customId === "gw_join") {
           if (!data) {
@@ -269,7 +304,7 @@ export default (client) => {
           return;
         }
 
-        /* ===== PARTICIPANTS ===== */
+        /* ================= PARTICIPANTS ================= */
 
         if (customId === "gw_participants") {
           if (!data) return;
@@ -290,7 +325,7 @@ export default (client) => {
           });
         }
 
-        /* ===== END ===== */
+        /* ================= END ================= */
 
         if (customId === "gw_end") {
           if (!data) return;
@@ -310,12 +345,12 @@ export default (client) => {
           endGiveaway(interaction.message.id, client);
 
           return interaction.reply({
-            content: "🛑 Ended",
+            content: "🛑 Giveaway ended",
             flags: MessageFlags.Ephemeral
           });
         }
 
-        /* ===== REROLL ===== */
+        /* ================= REROLL ================= */
 
         if (customId === "gw_reroll") {
           if (!data) return;
@@ -323,13 +358,13 @@ export default (client) => {
           endGiveaway(interaction.message.id, client);
 
           return interaction.reply({
-            content: "🔁 Rerolled",
+            content: "🔁 Giveaway rerolled",
             flags: MessageFlags.Ephemeral
           });
         }
       }
 
-      /* ===== SELECT MENU ===== */
+      /* ================= ROLE MENU ================= */
 
       if (interaction.isStringSelectMenu()) {
         if (interaction.customId !== "reaction_roles") return;
@@ -364,7 +399,7 @@ export default (client) => {
 
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
-          content: "Unexpected error",
+          content: "❌ Unexpected error",
           flags: MessageFlags.Ephemeral
         }).catch(() => {});
       }
