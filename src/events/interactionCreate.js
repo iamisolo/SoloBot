@@ -105,10 +105,8 @@ function endGiveaway(id, client) {
 
 /* ================= MAIN ================= */
 
-export default {
-  name: Events.InteractionCreate,
-
-  async execute(interaction, client) {
+export default (client) => {
+  client.on(Events.InteractionCreate, async (interaction) => {
     try {
       const { guild, user, member } = interaction;
 
@@ -371,5 +369,5 @@ export default {
         }).catch(() => {});
       }
     }
-  }
+  });
 };
