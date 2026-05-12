@@ -16,6 +16,8 @@ import { giveaways, BONUS_ROLES } from "../commands/Giveaway/giveaway.js";
 
 const CATEGORY_ID = "1496885067149213908";
 
+const LOG_CHANNEL_ID = "1503799606474182686";
+
 const STAFF_ROLE_IDS = [
   "1483819172403347548",
   "1483818875958067210",
