@@ -23,92 +23,17 @@ const STAFF_ROLE_IDS = [
   "1498955717799968819"
 ];
 
-const GIVEAWAY_STAFF_ROLE_IDS = [
-  "1469921454865911879",
-  "1498955717799968819",
-  "1483818875958067210",
-  "1483819172403347548",
-  "1480860174116720690"
-];
-
 const VERIFIED_ROLE_ID = "1485246026913808384";
-const SELF_ROLE_ID = "1485120899949531198";
 
-/* ================= GIVEAWAY UI ================= */
+/* ================= GIVEAWAY BUTTON UI ================= */
 
-function getRow(count, isPrivileged) {
-  const row = new ActionRowBuilder().addComponents(
+function getRow(count) {
+  return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("gw_join")
       .setLabel(`🎉 ${count}`)
-      .setStyle(ButtonStyle.Primary),
-
-    new ButtonBuilder()
-      .setCustomId("gw_participants")
-      .setLabel("Participants")
-      .setStyle(ButtonStyle.Secondary)
+      .setStyle(ButtonStyle.Primary)
   );
-
-  if (isPrivileged) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId("gw_end")
-        .setLabel("End")
-        .setStyle(ButtonStyle.Danger),
-
-      new ButtonBuilder()
-        .setCustomId("gw_reroll")
-        .setLabel("Reroll")
-        .setStyle(ButtonStyle.Success)
-    );
-  }
-
-  return row;
-}
-
-/* ================= END GIVEAWAY ================= */
-
-function endGiveaway(id, client) {
-  const data = giveaways.get(id);
-  if (!data) return;
-
-  const channel = client.channels.cache.get(data.channelId);
-  if (!channel) return;
-
-  let pool = [];
-
-  for (const [userId, count] of data.entries) {
-    for (let i = 0; i < count; i++) pool.push(userId);
-  }
-
-  if (!pool.length) {
-    channel.send("❌ No participants.");
-    giveaways.delete(id);
-    return;
-  }
-
-  const winners = [];
-  const used = new Set();
-
-  while (winners.length < data.winners && used.size < pool.length) {
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    if (!used.has(pick)) {
-      used.add(pick);
-      winners.push(pick);
-    }
-  }
-
-  channel.send({
-    embeds: [{
-      color: 0x2b2d31,
-      description:
-        `🎉 **Winners** 🎉\n\n` +
-        `${winners.map(x => `<@${x}>`).join(", ")}\n\n` +
-        `🏆 Prize: **${data.prize}**\n👑 Host: <@${data.hostId}>`
-    }]
-  });
-
-  giveaways.delete(id);
 }
 
 /* ================= MAIN ================= */
@@ -117,20 +42,13 @@ export default (client) => {
   client.on(Events.InteractionCreate, async (interaction) => {
     try {
       const { guild, user, member } = interaction;
+      if (!guild) return;
 
-      /* ===== COMMANDS ===== */
-
-      if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
-        return await command.execute(interaction, client);
-      }
-
-      /* ===== BUTTONS ===== */
+      /* ================= BUTTONS ================= */
 
       if (interaction.isButton()) {
         const { customId } = interaction;
-        const data = giveaways.get(interaction.message.id);
+        const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
 
         /* ================= CREATE TICKET ================= */
 
@@ -140,6 +58,15 @@ export default (client) => {
           if (!member.roles.cache.has(VERIFIED_ROLE_ID)) {
             return interaction.editReply({
               content: "❌ You must be verified to open a ticket"
+            });
+          }
+
+          await guild.channels.fetch();
+          const category = guild.channels.cache.get(CATEGORY_ID);
+
+          if (!category) {
+            return interaction.editReply({
+              content: "❌ Category not found. Fix CATEGORY_ID"
             });
           }
 
@@ -156,7 +83,7 @@ export default (client) => {
           const channel = await guild.channels.create({
             name: `ticket-${user.id}`,
             type: ChannelType.GuildText,
-            parent: CATEGORY_ID,
+            parent: category.id,
             permissionOverwrites: [
               {
                 id: guild.id,
@@ -197,6 +124,12 @@ export default (client) => {
             components: [row]
           });
 
+          if (logChannel) {
+            await logChannel.send(
+              `🟢 **${user.username} created a ticket**\n<#${channel.id}>`
+            );
+          }
+
           return interaction.editReply({
             content: `✅ Ticket created: ${channel}`
           });
@@ -205,32 +138,40 @@ export default (client) => {
         /* ================= CLAIM ================= */
 
         if (customId === "claim_ticket") {
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
           const isStaff = member.roles.cache.some(r =>
             STAFF_ROLE_IDS.includes(r.id)
           );
 
           if (!isStaff) {
-            return interaction.reply({
-              content: "❌ Only staff",
-              flags: MessageFlags.Ephemeral
+            return interaction.editReply({
+              content: "❌ Only staff"
             });
           }
 
-          return interaction.update({
+          await interaction.message.edit({
             content: `👨‍💼 Claimed by ${user}`,
             components: interaction.message.components
+          });
+
+          if (logChannel) {
+            await logChannel.send(
+              `🔵 **${user.username} claimed the ticket**\n<#${interaction.channel.id}>`
+            );
+          }
+
+          return interaction.editReply({
+            content: "✅ Ticket claimed"
           });
         }
 
         /* ================= CLOSE ================= */
 
         if (customId === "close_ticket") {
-          const channel = interaction.channel;
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-          await interaction.reply({
-            content: "🔒 Closing & saving transcript...",
-            flags: MessageFlags.Ephemeral
-          });
+          const channel = interaction.channel;
 
           const transcript = await createTranscript(channel, {
             limit: -1,
@@ -238,11 +179,9 @@ export default (client) => {
             filename: `transcript-${channel.name}.html`
           });
 
-          const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
-
           if (logChannel) {
             await logChannel.send({
-              content: `📄 Transcript: ${channel.name}`,
+              content: `🟡 **${user.username} closed the ticket**\n<#${channel.id}>`,
               files: [transcript]
             });
           }
@@ -269,89 +208,75 @@ export default (client) => {
             components: [row]
           });
 
-          return;
+          return interaction.editReply({
+            content: "✅ Ticket closed"
+          });
         }
 
         /* ================= DELETE ================= */
 
         if (customId === "delete_ticket") {
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
           const isStaff = member.roles.cache.some(r =>
             STAFF_ROLE_IDS.includes(r.id)
           );
 
           if (!isStaff) {
-            return interaction.reply({
-              content: "❌ Only staff",
-              flags: MessageFlags.Ephemeral
+            return interaction.editReply({
+              content: "❌ Only staff"
             });
           }
 
-          await interaction.reply({
-            content: "🗑 Deleting...",
-            flags: MessageFlags.Ephemeral
+          if (logChannel) {
+            await logChannel.send(
+              `🔴 **${user.username} deleted the ticket**\n${interaction.channel.name}`
+            );
+          }
+
+          await interaction.editReply({
+            content: "🗑 Deleting..."
           });
 
           setTimeout(() => {
             interaction.channel.delete().catch(() => {});
           }, 2000);
-
-          return;
         }
 
         /* ================= GIVEAWAY JOIN ================= */
 
         if (customId === "gw_join") {
+          const data = giveaways.get(interaction.message.id);
           if (!data) return;
 
+          await interaction.deferUpdate(); // ✅ FIXED
+
           if (!member.roles.cache.has(VERIFIED_ROLE_ID)) {
-            return interaction.reply({
-              content: "❌ Verified only",
+            return interaction.followUp({
+              content: "❌ You must be verified to join giveaways",
               flags: MessageFlags.Ephemeral
             });
           }
-
-          await interaction.deferUpdate();
 
           if (data.entries.has(user.id)) {
             data.entries.delete(user.id);
           } else {
             let entries = 1;
+
             for (const roleId in BONUS_ROLES) {
               if (member.roles.cache.has(roleId)) {
                 entries += BONUS_ROLES[roleId];
               }
             }
+
             data.entries.set(user.id, entries);
           }
 
           let count = 0;
           for (const val of data.entries.values()) count += val;
 
-          const isPrivileged =
-            user.id === data.hostId ||
-            member.roles.cache.some(r =>
-              GIVEAWAY_STAFF_ROLE_IDS.includes(r.id)
-            );
-
           await interaction.message.edit({
-            components: [getRow(count, isPrivileged)]
-          });
-
-          return;
-        }
-
-        /* ================= END / REROLL ================= */
-
-        if (customId === "gw_end" || customId === "gw_reroll") {
-          if (!data) return;
-
-          endGiveaway(interaction.message.id, client);
-
-          return interaction.reply({
-            content: customId === "gw_end"
-              ? "🛑 Ended"
-              : "🔁 Rerolled",
-            flags: MessageFlags.Ephemeral
+            components: [getRow(count)]
           });
         }
       }
