@@ -74,7 +74,7 @@ async function update(i, cfg, id) {
 /* ---------- MAIN ---------- */
 
 export default {
-    async execute(interaction, config, client) {
+    async execute(interaction, client) {
         try {
             const id = interaction.guild.id;
             const cfg = await getLevelingConfig(client, id);
