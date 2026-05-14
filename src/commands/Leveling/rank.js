@@ -1,45 +1,27 @@
-
-
-
-
-
 import {
   SlashCommandBuilder,
-  EmbedBuilder
+  AttachmentBuilder
 } from 'discord.js';
 
 import { logger } from '../../utils/logger.js';
-import {
-  handleInteractionError,
-  TitanBotError,
-  ErrorTypes
-} from '../../utils/errorHandler.js';
+import { generateRankCard } from '../../utils/rankCard.js';
 
 import {
   getUserLevelData,
   getXPNeeded
 } from '../../services/leveling.js';
 
-import { InteractionHelper } from '../../utils/interactionHelper.js';
-
 export default {
   data: new SlashCommandBuilder()
     .setName('rank')
-    .setDescription("Check your or another user's rank and level")
+    .setDescription("Check rank")
     .addUserOption(option =>
-      option
-        .setName('user')
-        .setDescription('User to check')
-        .setRequired(false)
-    )
-    .setDMPermission(false),
+      option.setName('user').setDescription('Target user')
+    ),
 
-  category: 'Leveling',
-
-  async execute(interaction, config, client) {
+  async execute(interaction, client) {
     try {
-      const start = Date.now();
-      await InteractionHelper.safeDefer(interaction);
+      await interaction.deferReply();
 
       const targetUser =
         interaction.options.getUser('user') || interaction.user;
@@ -49,11 +31,7 @@ export default {
         .catch(() => null);
 
       if (!member) {
-        throw new TitanBotError(
-          `User ${targetUser.id} not found`,
-          ErrorTypes.USER_INPUT,
-          'User not found in this server.'
-        );
+        return interaction.editReply("❌ User not found");
       }
 
       const data = await getUserLevelData(
@@ -62,98 +40,49 @@ export default {
         targetUser.id
       );
 
-      const level = data?.level ?? 0;
-      const xp = data?.xp ?? 0;
-      const totalXp = data?.totalXp ?? 0;
-
-      // ✅ FIXED
+      const level = data.level || 0;
+      const xp = data.xp || 0;
       const xpNeeded = getXPNeeded(level);
-      const progress =
-        xpNeeded > 0 ? Math.floor((xp / xpNeeded) * 100) : 0;
 
-      const progressBar = buildProgressBar(progress, 20);
-
-      const rankPosition = await getRankPosition(
+      const rank = await getRankPosition(
         client,
         interaction.guildId,
         targetUser.id
       );
 
-      const embed = new EmbedBuilder()
-        .setAuthor({
-          name: `${member.displayName}'s Rank`,
-          iconURL: member.displayAvatarURL({ dynamic: true })
-        })
-        .addFields(
-          {
-            name: '🏆 Rank',
-            value: rankPosition ? `#${rankPosition}` : 'Unranked',
-            inline: true
-          },
-          {
-            name: '📊 Level',
-            value: `${level}`,
-            inline: true
-          },
-          {
-            name: '⭐ XP',
-            value: `${xp}/${xpNeeded}`,
-            inline: true
-          },
-          {
-            name: '✨ Total XP',
-            value: `${totalXp}`,
-            inline: true
-          },
-          {
-            name: `Progress to Level ${level + 1}`,
-            value: `${progressBar} ${progress}%`
-          }
-        )
-        .setColor('#00ffcc')
-        .setFooter({
-          text: `Requested by ${interaction.user.username}`
-        })
-        .setTimestamp();
-
-      await InteractionHelper.safeEditReply(interaction, {
-        embeds: [embed]
+      const buffer = await generateRankCard({
+        user: targetUser,
+        member,
+        level,
+        xp,
+        xpNeeded,
+        rank
       });
 
-      logger.debug(
-        `[SOLOBOT] Rank checked → ${targetUser.id} | ${Date.now() - start}ms`
-      );
-
-    } catch (error) {
-      logger.error('[SOLOBOT] Rank Command Error:', error);
-
-      await handleInteractionError(interaction, error, {
-        type: 'command',
-        commandName: 'rank'
+      const attachment = new AttachmentBuilder(buffer, {
+        name: 'rank.png'
       });
+
+      await interaction.editReply({
+        files: [attachment]
+      });
+
+    } catch (err) {
+      console.error(err);
+      await interaction.editReply("❌ Error generating rank card");
     }
   }
 };
 
-function buildProgressBar(percent, size = 10) {
-  percent = Math.max(0, Math.min(100, percent));
-  const filled = Math.round((percent / 100) * size);
-  return '█'.repeat(filled) + '░'.repeat(size - filled);
-}
-
 async function getRankPosition(client, guildId, userId) {
   try {
-    if (!client.db) return null; // ✅ prevent crash
-
     const keys = await client.db.keys(`${guildId}:xp:*`);
     const users = [];
 
     for (const key of keys) {
       const data = await client.db.get(key);
-      const id = key.split(':').pop();
-
       users.push({
-        id,
+        id: key.split(':')[2],
         xp: data?.totalXp || 0
       });
     }
@@ -164,8 +93,7 @@ async function getRankPosition(client, guildId, userId) {
 
     return index === -1 ? null : index + 1;
 
-  } catch (error) {
-    logger.error('[SOLOBOT] Rank Position Error:', error);
+  } catch {
     return null;
   }
 }
