@@ -51,7 +51,7 @@ export default {
 
   category: 'Leveling',
 
-  async execute(interaction, config, client) {
+  async execute(interaction, client) {
     try {
       const start = Date.now();
       await InteractionHelper.safeDefer(interaction);
