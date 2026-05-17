@@ -86,9 +86,34 @@ export default (client) => {
         return;
       }
 
-      /* ================= BUTTONS ================= */
+      // ================= SELECT MENU (REACTION ROLES) =================
+if (interaction.isStringSelectMenu()) {
 
-      if (!interaction.isButton()) return;
+  if (interaction.customId === "reaction_roles") {
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const selectedRoles = interaction.values;
+
+    for (const roleId of selectedRoles) {
+      const role = guild.roles.cache.get(roleId);
+      if (!role) continue;
+
+      if (member.roles.cache.has(roleId)) {
+        await member.roles.remove(roleId);
+      } else {
+        await member.roles.add(roleId);
+      }
+    }
+
+    return interaction.editReply({
+      content: "✅ Your roles have been updated!"
+    });
+  }
+}
+
+// ================= BUTTONS =================
+if (!interaction.isButton()) return;
 
       const { customId } = interaction;
       const data = giveaways.get(interaction.message.id);
