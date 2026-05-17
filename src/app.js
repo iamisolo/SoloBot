@@ -19,6 +19,8 @@ import { loadCommands, registerCommands } from './handlers/commandLoader.js';
 // ✅ interaction handler
 import interactionHandler from './events/interactionCreate.js';
 
+import { setupReactionRoleListeners } from './handlers/reactionRoles.js';
+
 // ===== GIVEAWAY FILE PATH (FIXED CASE) =====
 const FILE = path.join(process.cwd(), 'src', 'commands', 'Giveaway', 'giveaways.json');
 
@@ -39,13 +41,15 @@ export const giveaways = new Map();
 class Bot extends Client {
   constructor() {
     super({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.MessageContent
-      ]
-    });
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions
+  ],
+  partials: ['MESSAGE', 'CHANNEL', 'REACTION']
+});
 
     this.commands = new Collection();
   }
@@ -61,11 +65,13 @@ class Bot extends Client {
       await loadCommands(this);
 
       this.once('ready', () => {
-        console.log('==============================');
-        console.log(`🤖 Logged in as ${this.user.tag}`);
-        console.log(`📊 Guilds: ${this.guilds.cache.size}`);
-        console.log('==============================');
-      });
+  console.log('==============================');
+  console.log(`🤖 Logged in as ${this.user.tag}`);
+  console.log(`📊 Guilds: ${this.guilds.cache.size}`);
+  console.log('==============================');
+
+  setupReactionRoleListeners(this);
+});
 
       // login
       await this.login(process.env.DISCORD_TOKEN);
