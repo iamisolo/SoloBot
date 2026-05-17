@@ -10,7 +10,7 @@ export default {
     await interaction.deferReply({ ephemeral: true });
 
     const menu = new StringSelectMenuBuilder()
-      .setCustomId("reaction_roles")
+      .setCustomId("roles_select")
       .setPlaceholder("🎭 Select your roles")
       .setMinValues(0)
       .setMaxValues(4)
