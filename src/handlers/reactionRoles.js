@@ -1,283 +1,164 @@
 import { Events, EmbedBuilder, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { getReactionRoleMessage, addReactionRole, removeReactionRole } from '../services/reactionRoleService.js';
-import { logEvent, EVENT_TYPES } from '../services/loggingService.js';
 import { errorEmbed } from '../utils/embeds.js';
 import { logger } from '../utils/logger.js';
 
-
-
-
-
-
-
-
+/* =========================
+   REACTION ADD
+========================= */
 async function handleReactionAdd(client, reaction, user) {
     try {
-        if (user.bot || !reaction.message.guild) return;
+        if (user.bot) return;
+
+        if (reaction.partial) await reaction.fetch();
+        if (reaction.message.partial) await reaction.message.fetch();
 
         const { message } = reaction;
-        const { guild } = message;
+        if (!message.guild) return;
+
         const emoji = reaction.emoji.id || reaction.emoji.name;
 
-        const reactionRoleMessage = await getReactionRoleMessage(
-            client,
-            guild.id,
-            message.id
-        );
+        const data = await getReactionRoleMessage(client, message.guild.id, message.id);
+        if (!data) return;
 
-        if (!reactionRoleMessage) return;
-
-        const roleId = reactionRoleMessage.roles[emoji];
+        const roleId = data.roles[emoji];
         if (!roleId) return;
 
-        const member = await guild.members.fetch(user.id);
-        const role = guild.roles.cache.get(roleId);
+        const member = await message.guild.members.fetch(user.id);
+        await member.roles.add(roleId).catch(() => {});
 
-        if (!role) {
-            await removeReactionRole(client, guild.id, message.id, emoji);
-            return;
-        }
-
-        await member.roles.add(role);
-
-        
-        try {
-            await logEvent({
-                client,
-                guildId: guild.id,
-                eventType: EVENT_TYPES.REACTION_ROLE_ADD,
-                data: {
-                    description: `Reaction role assigned to ${user.tag}`,
-                    userId: user.id,
-                    channelId: message.channel.id,
-                    fields: [
-                        {
-                            name: '👤 Member',
-                            value: `${user.tag} (${user.id})`,
-                            inline: true
-                        },
-                        {
-                            name: '🏷️ Role',
-                            value: role.toString(),
-                            inline: true
-                        },
-                        {
-                            name: '😊 Reaction',
-                            value: reaction.emoji.toString(),
-                            inline: true
-                        }
-                    ]
-                }
-            });
-        } catch (error) {
-            logger.debug('Error logging reaction role add:', error);
-        }
-
-    } catch (error) {
-        logger.error('Error in handleReactionAdd:', error);
+    } catch (err) {
+        logger.error("Reaction Add Error:", err);
     }
 }
 
-
-
-
-
-
-
-
+/* =========================
+   REACTION REMOVE
+========================= */
 async function handleReactionRemove(client, reaction, user) {
     try {
-        if (user.bot || !reaction.message.guild) return;
+        if (user.bot) return;
+
+        if (reaction.partial) await reaction.fetch();
+        if (reaction.message.partial) await reaction.message.fetch();
 
         const { message } = reaction;
-        const { guild } = message;
+        if (!message.guild) return;
+
         const emoji = reaction.emoji.id || reaction.emoji.name;
 
-        const reactionRoleMessage = await getReactionRoleMessage(
-            client,
-            guild.id,
-            message.id
-        );
+        const data = await getReactionRoleMessage(client, message.guild.id, message.id);
+        if (!data) return;
 
-        if (!reactionRoleMessage) return;
-
-        const roleId = reactionRoleMessage.roles[emoji];
+        const roleId = data.roles[emoji];
         if (!roleId) return;
 
-        const member = await guild.members.fetch(user.id);
-        const role = guild.roles.cache.get(roleId);
+        const member = await message.guild.members.fetch(user.id);
+        await member.roles.remove(roleId).catch(() => {});
 
-        if (!role) {
-            await removeReactionRole(client, guild.id, message.id, emoji);
-            return;
-        }
-
-        await member.roles.remove(role);
-
-        
-        try {
-            await logEvent({
-                client,
-                guildId: guild.id,
-                eventType: EVENT_TYPES.REACTION_ROLE_REMOVE,
-                data: {
-                    description: `Reaction role removed from ${user.tag}`,
-                    userId: user.id,
-                    channelId: message.channel.id,
-                    fields: [
-                        {
-                            name: '👤 Member',
-                            value: `${user.tag} (${user.id})`,
-                            inline: true
-                        },
-                        {
-                            name: '🏷️ Role',
-                            value: role.toString(),
-                            inline: true
-                        },
-                        {
-                            name: '😊 Reaction',
-                            value: reaction.emoji.toString(),
-                            inline: true
-                        }
-                    ]
-                }
-            });
-        } catch (error) {
-            logger.debug('Error logging reaction role remove:', error);
-        }
-
-    } catch (error) {
-        logger.error('Error in handleReactionRemove:', error);
+    } catch (err) {
+        logger.error("Reaction Remove Error:", err);
     }
 }
 
-
-
-
-
-
+/* =========================
+   COMMAND HANDLER
+========================= */
 export async function handleReactionRoles(interaction) {
     try {
-        if (!interaction.isCommand()) return false;
+        if (!interaction.isChatInputCommand()) return false;
 
-        const { commandName, options, guild, member } = interaction;
+        if (interaction.commandName !== "reactionrole") return false;
 
-        if (commandName === 'reactionrole') {
-            const subcommand = options.getSubcommand();
-            
-            if (subcommand === 'create') {
-                if (!member.permissions.has(PermissionFlagsBits.ManageRoles)) {
-                    await interaction.reply({
-                        embeds: [errorEmbed('You need the `Manage Roles` permission to use this command.')],
-                        flags: MessageFlags.Ephemeral
-                    });
-                    return true;
-                }
+        const sub = interaction.options.getSubcommand();
+        const guild = interaction.guild;
+        const member = interaction.member;
 
-                const messageId = options.getString('message_id');
-                const emoji = options.getString('emoji');
-                const role = options.getRole('role');
+        if (!guild) return false;
 
-                if (!guild || !member) {
-                    await interaction.reply({
-                        embeds: [errorEmbed('This command can only be used in a server.')],
-                        flags: MessageFlags.Ephemeral
-                    });
-                    return true;
-                }
+        if (sub === "create") {
 
-                if (!messageId || !/^\d{17,20}$/.test(messageId)) {
-                    await interaction.reply({
-                        embeds: [errorEmbed('Invalid message ID. Please provide a valid Discord message ID.')],
-                        flags: MessageFlags.Ephemeral
-                    });
-                    return true;
-                }
-
-                if (!emoji || emoji.length > 100) {
-                    await interaction.reply({
-                        embeds: [errorEmbed('Invalid emoji. Please provide a valid emoji value.')],
-                        flags: MessageFlags.Ephemeral
-                    });
-                    return true;
-                }
-
-                if (!role) {
-                    await interaction.reply({
-                        embeds: [errorEmbed('Invalid role selection.')],
-                        flags: MessageFlags.Ephemeral
-                    });
-                    return true;
-                }
-
-                let emojiId = emoji;
-                const emojiMatch = emoji.match(/<a?:\w+:(\d+)>/);
-                if (emojiMatch) {
-                    emojiId = emojiMatch[1];
-                }
-
-                await addReactionRole(
-                    interaction.client,
-                    guild.id,
-                    messageId,
-                    emojiId,
-                    role.id
-                );
-
-                try {
-                    const channel = interaction.channel;
-                    const message = await channel.messages.fetch(messageId);
-                    await message.react(emoji);
-                } catch (error) {
-                    logger.error('Error adding reaction to message:', error);
-                }
-
+            if (!member.permissions.has(PermissionFlagsBits.ManageRoles)) {
                 await interaction.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setDescription(`✅ Added reaction role for ${emoji} to <@&${role.id}>`)
-                            .setColor('#00ff00')
-                    ],
+                    embeds: [errorEmbed("You need **Manage Roles** permission.")],
                     flags: MessageFlags.Ephemeral
                 });
-
                 return true;
             }
+
+            const messageId = interaction.options.getString("message_id");
+            const emojiInput = interaction.options.getString("emoji");
+            const role = interaction.options.getRole("role");
+
+            if (!messageId || !emojiInput || !role) {
+                await interaction.reply({
+                    embeds: [errorEmbed("Missing required fields.")],
+                    flags: MessageFlags.Ephemeral
+                });
+                return true;
+            }
+
+            // normalize emoji
+            let emoji = emojiInput;
+            const match = emojiInput.match(/<a?:\w+:(\d+)>/);
+            if (match) emoji = match[1];
+
+            // save to DB
+            await addReactionRole(
+                interaction.client,
+                guild.id,
+                messageId,
+                emoji,
+                role.id
+            );
+
+            // react on message
+            try {
+                const msg = await interaction.channel.messages.fetch(messageId);
+                await msg.react(emojiInput);
+            } catch (err) {
+                logger.error("React failed:", err);
+            }
+
+            await interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor("Green")
+                        .setDescription(`✅ ${emojiInput} → <@&${role.id}> added`)
+                ],
+                flags: MessageFlags.Ephemeral
+            });
+
+            return true;
         }
 
         return false;
-    } catch (error) {
-        logger.error('Error in handleReactionRoles:', error);
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({
-                embeds: [errorEmbed('An error occurred while processing your request.')],
-                flags: MessageFlags.Ephemeral
-            });
-        } else {
+
+    } catch (err) {
+        logger.error("Command Error:", err);
+
+        if (!interaction.replied) {
             await interaction.reply({
-                embeds: [errorEmbed('An error occurred while processing your request.')],
+                embeds: [errorEmbed("Something went wrong.")],
                 flags: MessageFlags.Ephemeral
             });
         }
+
         return true;
     }
 }
 
-
-
-
-
+/* =========================
+   LISTENER SETUP (IMPORTANT)
+========================= */
 export function setupReactionRoleListeners(client) {
-    client.on(Events.MessageReactionAdd, async (reaction, user) => {
-        await handleReactionAdd(client, reaction, user);
+
+    client.on(Events.MessageReactionAdd, (reaction, user) => {
+        handleReactionAdd(client, reaction, user);
     });
 
-    client.on(Events.MessageReactionRemove, async (reaction, user) => {
-        await handleReactionRemove(client, reaction, user);
+    client.on(Events.MessageReactionRemove, (reaction, user) => {
+        handleReactionRemove(client, reaction, user);
     });
-}
 
-
-
-
+        }
