@@ -86,29 +86,42 @@ export default (client) => {
         return;
       }
 
-      // ================= SELECT MENU (REACTION ROLES) =================
+// ================= SELECT MENU (REACTION ROLES) =================
 if (interaction.isStringSelectMenu()) {
 
   if (interaction.customId === "reaction_roles") {
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      await interaction.deferUpdate();
 
-    const selectedRoles = interaction.values;
+      const selectedRoles = interaction.values;
 
-    for (const roleId of selectedRoles) {
-      const role = guild.roles.cache.get(roleId);
-      if (!role) continue;
+      for (const roleId of selectedRoles) {
+        const role = guild.roles.cache.get(roleId);
+        if (!role) continue;
 
-      if (member.roles.cache.has(roleId)) {
-        await member.roles.remove(roleId);
-      } else {
-        await member.roles.add(roleId);
+        if (member.roles.cache.has(roleId)) {
+          await member.roles.remove(roleId);
+        } else {
+          await member.roles.add(roleId);
+        }
+      }
+
+      await interaction.followUp({
+        content: "✅ Your roles have been updated!",
+        flags: MessageFlags.Ephemeral
+      });
+
+    } catch (err) {
+      console.error("❌ Role Select Error:", err);
+
+      if (!interaction.replied) {
+        await interaction.followUp({
+          content: "❌ Failed to update roles",
+          flags: MessageFlags.Ephemeral
+        });
       }
     }
-
-    return interaction.editReply({
-      content: "✅ Your roles have been updated!"
-    });
   }
 }
 
